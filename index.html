@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EFETEBE AQUA & AGRICULTURAL CORPORATION - Payroll</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="brand">
+                <i class="fa-solid fa-money-bill-wave"></i>
+                <span style="font-size: 0.9rem; line-height: 1.2;">EFETEBE AQUA & AGRICULTURAL CORP.</span>
+            </div>
+            <nav class="nav-menu">
+                <button class="nav-item active" onclick="app.navigate('dashboard')">
+                    <i class="fa-solid fa-chart-pie"></i> Dashboard
+                </button>
+                <button class="nav-item" onclick="app.navigate('employees')">
+                    <i class="fa-solid fa-users"></i> Employees
+                </button>
+                <button class="nav-item" onclick="app.navigate('payroll')">
+                    <i class="fa-solid fa-file-invoice-dollar"></i> Payroll
+                </button>
+                <button class="nav-item" onclick="app.navigate('weekly')">
+                    <i class="fa-solid fa-calendar-check"></i> Weekly Work
+                </button>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="top-bar">
+                <h1 id="page-title">Dashboard</h1>
+                <div class="user-profile">
+                    <span>Admin</span>
+                    <div class="avatar"><i class="fa-solid fa-user"></i></div>
+                </div>
+            </header>
+
+            <!-- Dashboard View -->
+            <section id="view-dashboard" class="view active">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon bg-blue"><i class="fa-solid fa-users"></i></div>
+                        <div class="stat-info">
+                            <h3>Total Employees</h3>
+                            <p id="dash-total-employees">0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon bg-green"><i class="fa-solid fa-calendar-week"></i></div>
+                        <div class="stat-info">
+                            <h3>Weekly Payroll</h3>
+                            <p id="dash-weekly-payroll">₱0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon bg-purple"><i class="fa-solid fa-calendar-days"></i></div>
+                        <div class="stat-info">
+                            <h3>Monthly Payroll</h3>
+                            <p id="dash-monthly-payroll">₱0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="recent-activity">
+                    <h2>Recent Work Logs</h2>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Date</th>
+                                    <th>Work Description</th>
+                                    <th>Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-logs-body">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Employees View -->
+            <section id="view-employees" class="view">
+                <div class="action-bar">
+                    <button class="btn btn-primary" onclick="app.openModal('add-employee-modal')">
+                        <i class="fa-solid fa-plus"></i> Add Employee
+                    </button>
+                    <div class="search-container">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" placeholder="Search employees..." oninput="app.renderEmployeeList()"
+                            id="employee-search">
+                    </div>
+                </div>
+                <div class="employee-grid" id="employee-grid">
+                    <!-- Employee Cards populated by JS -->
+                </div>
+            </section>
+
+            <!-- Weekly Work View -->
+            <section id="view-weekly" class="view">
+                <div class="action-bar" style="justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+                    <div style="display: flex; gap: 1rem; align-items: center;">
+                        <button class="btn btn-secondary" onclick="app.changeWeek(-1)">
+                            <i class="fa-solid fa-chevron-left"></i>
+                        </button>
+                        <h2 id="weekly-date-range" style="margin: 0; min-width: 200px; text-align: center;">...</h2>
+                        <button class="btn btn-secondary" onclick="app.changeWeek(1)">
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="search-container">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" placeholder="Search in matrix..." oninput="app.renderWeeklyWork()"
+                            id="weekly-search">
+                    </div>
+                </div>
+
+                <div class="table-container match-height">
+                    <table class="matrix-table">
+                        <thead>
+                            <tr id="weekly-header-row">
+                                <!-- Headers populated by JS -->
+                            </tr>
+                        </thead>
+                        <tbody id="weekly-table-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Payroll View -->
+            <section id="view-payroll" class="view">
+                <div class="stats-grid">
+                    <div class="stat-card" style="width: 100%; max-width: 400px;">
+                        <div class="stat-icon bg-green"><i class="fa-solid fa-sack-dollar"></i></div>
+                        <div class="stat-info">
+                            <h3>Grand Total Payroll</h3>
+                            <p id="payroll-grand-total">₱0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-container" style="margin-top: 2rem;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Employee Name</th>
+                                <th>Role</th>
+                                <th>Days Worked</th>
+                                <th>Total Earnings</th>
+                            </tr>
+                        </thead>
+                        <tbody id="payroll-table-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Employee Details View -->
+            <section id="view-details" class="view">
+                <button class="btn-back" onclick="app.navigate('employees')">
+                    <i class="fa-solid fa-arrow-left"></i> Back to List
+                </button>
+
+                <div class="details-header">
+                    <div class="details-info">
+                        <h2 id="detail-name">Employee Name</h2>
+                        <p id="detail-role">Role</p>
+                    </div>
+                    <div class="details-stats">
+                        <div class="mini-stat">
+                            <span>Total Earnings</span>
+                            <strong id="detail-total-earnings">₱0</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="work-log-section">
+                    <div class="section-header">
+                        <h3>Work Logs</h3>
+                        <button class="btn btn-secondary" onclick="app.openModal('add-work-modal')">
+                            <i class="fa-solid fa-pen-to-square"></i> Log Work
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th>Rate</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="employee-logs-body">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="add-employee-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add New Employee</h2>
+                <span class="close" onclick="app.closeModal('add-employee-modal')">&times;</span>
+            </div>
+            <form onsubmit="app.handleAddEmployee(event)">
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" name="name" required placeholder="e.g. Juan dela Cruz">
+                </div>
+                <div class="form-group">
+                    <label>Position/Role</label>
+                    <input type="text" name="role" required placeholder="e.g. Carpenter">
+                </div>
+                <button type="submit" class="btn btn-primary full-width">Create Employee</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="add-work-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Log Work Day</h2>
+                <span class="close" onclick="app.closeModal('add-work-modal')">&times;</span>
+            </div>
+            <form onsubmit="app.handleAddWorkLog(event)">
+                <input type="hidden" id="log-employee-id">
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="date" name="date" required id="log-date-input">
+                </div>
+                <div class="form-group">
+                    <label>Work Description</label>
+                    <input type="text" name="description" required placeholder="e.g. Mixing cement">
+                </div>
+                <div class="form-group">
+                    <label>Daily Rate</label>
+                    <input type="text" value="₱450.00" disabled class="disabled-input">
+                    <small>Fixed daily rate</small>
+                </div>
+                <button type="submit" class="btn btn-primary full-width">Save Work Log</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
