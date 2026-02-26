@@ -822,7 +822,8 @@ body {
 
 .table-container {
     border: 1px solid var(--border);
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
 }
 
 @media (max-width: 992px) {
@@ -1104,3 +1105,7 @@ body {
         border-radius: 14px;
     }
 }
+
+
+
+

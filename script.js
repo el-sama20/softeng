@@ -137,17 +137,18 @@ const app = {
                 amount: Number(log.amount) || 0
             })));
 
-            await db.client.from('work_logs').delete().neq('id', '');
-            await db.client.from('employees').delete().neq('id', '');
-
             if (employeeRows.length > 0) {
-                const { error: empInsertErr } = await db.client.from('employees').insert(employeeRows);
-                if (empInsertErr) throw empInsertErr;
+                const { error: empUpsertErr } = await db.client
+                    .from('employees')
+                    .upsert(employeeRows, { onConflict: 'id' });
+                if (empUpsertErr) throw empUpsertErr;
             }
 
             if (workLogRows.length > 0) {
-                const { error: logInsertErr } = await db.client.from('work_logs').insert(workLogRows);
-                if (logInsertErr) throw logInsertErr;
+                const { error: logUpsertErr } = await db.client
+                    .from('work_logs')
+                    .upsert(workLogRows, { onConflict: 'id' });
+                if (logUpsertErr) throw logUpsertErr;
             }
         } catch (err) {
             console.error('Supabase sync failed:', err.message || err);
@@ -741,6 +742,7 @@ const app = {
 
 // Start App
 app.init();
+
 
 
 
