@@ -5,11 +5,19 @@
 
 // --- State Management ---
 const state = {
-    employees: JSON.parse(localStorage.getItem('payflow_employees')) || [],
+    employees: [],
     currentView: 'dashboard',
     selectedEmployeeId: null,
-    currentWeekStart: null, // Set in init
-    FIXED_DAILY_RATE: 450
+    currentWeekStart: null,
+    FIXED_DAILY_RATE: 450,
+    WORK_TYPES: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
+};
+
+const db = {
+    enabled: false,
+    client: null,
+    syncTimer: null,
+    isSyncing: false
 };
 
 // --- Utilities ---
@@ -18,21 +26,27 @@ const generateId = () => '_' + Math.random().toString(36).substr(2, 9);
 const getMonday = (d) => {
     d = new Date(d);
     var day = d.getDay(),
-        diff = d.getDate() - day + (day == 0 ? -6 : 1); // adjust when day is sunday
+        diff = d.getDate() - day + (day == 0 ? -6 : 1);
     return new Date(d.setDate(diff));
 };
 
-const formatDate = (d) => {
-    return d.toISOString().split('T')[0];
+const formatDate = (d) => d.toISOString().split('T')[0];
+
+const setupSupabase = () => {
+    if (!window.supabase || !window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) return;
+    if (window.SUPABASE_URL.includes('YOUR_') || window.SUPABASE_ANON_KEY.includes('YOUR_')) return;
+    db.client = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+    db.enabled = true;
 };
 
 const saveState = () => {
     localStorage.setItem('payflow_employees', JSON.stringify(state.employees));
-    app.render(); // Re-render on state change
+    app.render();
+    app.queueSupabaseSync();
 };
 
 const formatCurrency = (amount) => {
-    return '₱' + amount.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+    return '₱' + amount.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,' );
 };
 
 const getWeekNumber = (d) => {
@@ -41,13 +55,105 @@ const getWeekNumber = (d) => {
     var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
     var weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
     return weekNo;
-}
-
+};
 // --- App Controller ---
 const app = {
-    init: () => {
+    init: async () => {
+        state.currentWeekStart = getMonday(new Date());
+        setupSupabase();
+        await app.loadInitialData();
         app.render();
-        // Determine initial view based on actions or default
+    },
+
+    loadInitialData: async () => {
+        const local = JSON.parse(localStorage.getItem('payflow_employees') || '[]');
+        state.employees = Array.isArray(local) ? local : [];
+
+        if (!db.enabled) return;
+
+        const { data: employeesData, error: empErr } = await db.client
+            .from('employees')
+            .select('*')
+            .order('name', { ascending: true });
+        if (empErr) return console.error('Supabase load employees failed:', empErr.message);
+
+        const { data: logsData, error: logErr } = await db.client
+            .from('work_logs')
+            .select('*')
+            .order('work_date', { ascending: false });
+        if (logErr) return console.error('Supabase load work_logs failed:', logErr.message);
+
+        const logsByEmployee = new Map();
+        (logsData || []).forEach(log => {
+            const existing = logsByEmployee.get(log.employee_id) || [];
+            existing.push({
+                id: log.id,
+                date: log.work_date,
+                description: log.description,
+                amount: Number(log.amount) || 0
+            });
+            logsByEmployee.set(log.employee_id, existing);
+        });
+
+        state.employees = (employeesData || []).map(emp => ({
+            id: emp.id,
+            name: emp.name,
+            role: emp.role,
+            contact: emp.contact || '',
+            address: emp.address || '',
+            dailyRate: Number(emp.daily_rate) || 0,
+            joinedDate: emp.joined_date || new Date().toISOString(),
+            workLogs: logsByEmployee.get(emp.id) || []
+        }));
+
+        localStorage.setItem('payflow_employees', JSON.stringify(state.employees));
+    },
+
+    queueSupabaseSync: () => {
+        if (!db.enabled) return;
+        if (db.syncTimer) clearTimeout(db.syncTimer);
+        db.syncTimer = setTimeout(() => app.syncToSupabase(), 500);
+    },
+
+    syncToSupabase: async () => {
+        if (!db.enabled || db.isSyncing) return;
+        db.isSyncing = true;
+        try {
+            const employeeRows = state.employees.map(emp => ({
+                id: emp.id,
+                name: emp.name,
+                role: emp.role,
+                contact: emp.contact || '',
+                address: emp.address || '',
+                daily_rate: Number(emp.dailyRate) || 0,
+                joined_date: emp.joinedDate || new Date().toISOString()
+            }));
+
+            const workLogRows = state.employees.flatMap(emp => (emp.workLogs || []).map(log => ({
+                id: log.id,
+                employee_id: emp.id,
+                work_date: log.date,
+                description: log.description,
+                amount: Number(log.amount) || 0
+            })));
+
+            await db.client.from('work_logs').delete().neq('id', '');
+            await db.client.from('employees').delete().neq('id', '');
+
+            if (employeeRows.length > 0) {
+                const { error: empInsertErr } = await db.client.from('employees').insert(employeeRows);
+                if (empInsertErr) throw empInsertErr;
+            }
+
+            if (workLogRows.length > 0) {
+                const { error: logInsertErr } = await db.client.from('work_logs').insert(workLogRows);
+                if (logInsertErr) throw logInsertErr;
+            }
+        } catch (err) {
+            console.error('Supabase sync failed:', err.message || err);
+        } finally {
+            db.isSyncing = false;
+        }
     },
 
     navigate: (viewId) => {
@@ -59,8 +165,8 @@ const app = {
 
         document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
         if (viewId !== 'details') {
-            const navBtn = document.querySelector(`button[onclick="app.navigate('${viewId}')"]`);
-            if (navBtn) navBtn.classList.add('active');
+            document.querySelectorAll(`button[onclick="app.navigate('${viewId}')"], button[onclick="app.navigateMobile('${viewId}')"]`)
+                .forEach(btn => btn.classList.add('active'));
         }
 
         // Specific View logic
@@ -73,12 +179,23 @@ const app = {
         } else if (viewId === 'payroll') {
             document.getElementById('page-title').innerText = 'Payroll Summary';
             app.renderPayroll();
+        } else if (viewId === 'weekly') {
+            document.getElementById('page-title').innerText = 'Work Week DTR';
+            app.renderWeeklyWork();
         } else if (viewId === 'details') {
             document.getElementById('page-title').innerText = 'Employee Details';
             app.renderEmployeeDetails(state.selectedEmployeeId);
         }
     },
 
+
+    navigateMobile: (viewId) => {
+        app.navigate(viewId);
+        const offcanvasEl = document.getElementById('mobileNav');
+        if (offcanvasEl && window.bootstrap && bootstrap.Offcanvas) {
+            bootstrap.Offcanvas.getOrCreateInstance(offcanvasEl).hide();
+        }
+    },
     openModal: (modalId) => {
         document.getElementById(modalId).classList.add('active');
     },
@@ -159,6 +276,89 @@ const app = {
         const d = new Date(state.currentWeekStart);
         d.setDate(d.getDate() + (offset * 7));
         state.currentWeekStart = d;
+        app.renderWeeklyWork();
+    },
+
+    openDTRModal: (empId = '', dateStr = '') => {
+        const modal = document.getElementById('add-dtr-modal');
+        const empSelect = document.getElementById('dtr-employee');
+        const dateInput = document.getElementById('dtr-date');
+        if (!modal || !empSelect || !dateInput) return;
+
+        empSelect.innerHTML = state.employees
+            .map(emp => `<option value="${emp.id}">${emp.name} (${emp.role})</option>`)
+            .join('');
+
+        const defaultEmpId = empId || (state.employees[0] ? state.employees[0].id : '');
+        const defaultDate = dateStr || formatDate(new Date());
+
+        if (defaultEmpId) empSelect.value = defaultEmpId;
+        dateInput.value = defaultDate;
+
+        document.querySelectorAll('#add-dtr-modal input[name="nature"]').forEach(cb => {
+            cb.checked = false;
+        });
+
+        const employee = state.employees.find(e => e.id === defaultEmpId);
+        const existingLog = employee ? employee.workLogs.find(l => l.date === defaultDate) : null;
+        if (existingLog && existingLog.description.startsWith('Work: ')) {
+            const selected = existingLog.description.substring(6).split(', ');
+            document.querySelectorAll('#add-dtr-modal input[name="nature"]').forEach(cb => {
+                cb.checked = selected.includes(cb.value);
+            });
+        }
+
+        app.openModal('add-dtr-modal');
+    },
+
+    setDTRStatus: (empId, dateStr, checked) => {
+        const employee = state.employees.find(e => e.id === empId);
+        if (!employee) return;
+
+        if (checked) {
+            app.openDTRModal(empId, dateStr);
+            return;
+        }
+
+        employee.workLogs = employee.workLogs.filter(log => log.date !== dateStr);
+        saveState();
+        app.renderWeeklyWork();
+    },
+
+    handleAddDTRRecord: (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const empId = form['dtr-employee'].value;
+        const dateStr = form['dtr-date'].value;
+        const selectedNature = Array.from(form.querySelectorAll('input[name="nature"]:checked')).map(cb => cb.value);
+
+        if (selectedNature.length === 0) {
+            alert('Select at least one nature of work.');
+            return;
+        }
+
+        const employee = state.employees.find(emp => emp.id === empId);
+        if (!employee) return;
+
+        const rate = Number(employee.dailyRate) > 0 ? Number(employee.dailyRate) : state.FIXED_DAILY_RATE;
+        const desc = `Work: ${selectedNature.sort().join(', ')}`;
+        const existingLog = employee.workLogs.find(log => log.date === dateStr);
+
+        if (existingLog) {
+            existingLog.description = desc;
+            existingLog.amount = rate;
+        } else {
+            employee.workLogs.push({
+                id: generateId(),
+                date: dateStr,
+                description: desc,
+                amount: rate
+            });
+        }
+
+        employee.workLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
+        saveState();
+        app.closeModal('add-dtr-modal');
         app.renderWeeklyWork();
     },
 
@@ -430,7 +630,6 @@ const app = {
         document.getElementById('weekly-date-range').innerText =
             `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
 
-        // 1. Generate Header Rows (Mon 10/23, Tue 10/24 ...)
         const headerRow = document.getElementById('weekly-header-row');
         headerRow.innerHTML = '<th>Employee</th>';
 
@@ -439,26 +638,22 @@ const app = {
             const d = new Date(start);
             d.setDate(d.getDate() + i);
             const dateStr = formatDate(d);
-            currentDates.push({ dateObj: d, dateStr: dateStr });
+            currentDates.push({ dateObj: d, dateStr });
 
             const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
             const dayDate = d.getDate();
             headerRow.innerHTML += `<th>${dayName} ${dayDate}</th>`;
         }
-        headerRow.innerHTML += '<th>Total</th>';
+        headerRow.innerHTML += '<th>Weekly Earnings</th>';
 
-        // 2. Generate Body
         const tbody = document.getElementById('weekly-table-body');
         tbody.innerHTML = '';
 
-        const workTypes = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
-
-        // FILTER LOGIC
         const searchInput = document.getElementById('weekly-search');
         const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
-
         const filtered = state.employees.filter(emp =>
-            emp.name.toLowerCase().includes(searchTerm)
+            emp.name.toLowerCase().includes(searchTerm) ||
+            emp.role.toLowerCase().includes(searchTerm)
         );
 
         if (state.employees.length === 0) {
@@ -473,71 +668,40 @@ const app = {
 
         filtered.forEach(emp => {
             const tr = document.createElement('tr');
-
-            // Employee Name Cell
             const nameTd = document.createElement('td');
             nameTd.innerHTML = `<div><strong>${emp.name}</strong><br><small style="color:#999">${emp.role}</small></div>`;
             tr.appendChild(nameTd);
 
             let weeklyTotal = 0;
 
-            // Day Cells
             currentDates.forEach(dayInfo => {
                 const td = document.createElement('td');
-
-                // Check if log exists
                 const log = emp.workLogs.find(l => l.date === dayInfo.dateStr);
+                if (log) weeklyTotal += Number(log.amount) || 0;
 
-                // Parse active types
-                let activeTypes = [];
-                if (log && log.description.startsWith('Work: ')) {
-                    activeTypes = log.description.substring(6).split(', ');
-                    weeklyTotal += log.amount;
-                } else if (log) {
-                    // Backward compatibility or manual logs
-                    weeklyTotal += log.amount;
-                }
-
-                // Dropdown Structure
-                const dropdownId = `dropdown-${emp.id}-${dayInfo.dateStr}`;
-                const btnText = activeTypes.length > 0 ? activeTypes.join(', ') : 'Select';
-                const btnClass = activeTypes.length > 0 ? 'dropdown-btn active-selection' : 'dropdown-btn';
-
-                // Inline SVG for arrow
-                const arrowIcon = `<svg width="10" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 1L5 5L9 1"/></svg>`;
-
-                const dropdownHtml = `
-                    <div class="dropdown-wrapper">
-                        <button class="dropdown-btn" id="btn-${emp.id}-${dayInfo.dateStr}" onclick="app.toggleDropdown('${dropdownId}', event)">
-                            <span>${btnText}</span>
-                            ${arrowIcon}
+                const natureText = log && log.description ? log.description.replace('Work: ', '') : 'Set nature';
+                td.innerHTML = `
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:0.35rem;">
+                        <input type="checkbox" ${log ? 'checked' : ''}
+                            onchange="app.setDTRStatus('${emp.id}', '${dayInfo.dateStr}', this.checked)">
+                        <button class="btn btn-secondary" style="padding:0.25rem 0.5rem; font-size:0.75rem;"
+                            onclick="app.openDTRModal('${emp.id}', '${dayInfo.dateStr}')">
+                            ${natureText}
                         </button>
-                        <div id="${dropdownId}" class="dropdown-content">
-                            ${workTypes.map(type => `
-                                <div class="check-item ${activeTypes.includes(type) ? 'checked' : ''}" 
-                                     id="check-${emp.id}-${dayInfo.dateStr}-${type}"
-                                     onclick="app.toggleWorkType('${emp.id}', '${dayInfo.dateStr}', '${type}')">
-                                    ${type}
-                                </div>
-                            `).join('')}
-                        </div>
                     </div>
                 `;
-
-                td.innerHTML = dropdownHtml;
                 tr.appendChild(td);
             });
 
-            // Total Column
             const totalTd = document.createElement('td');
-            totalTd.id = `total-${emp.id}`;
+            totalTd.style.fontWeight = '700';
+            totalTd.style.color = 'var(--secondary)';
             totalTd.innerText = formatCurrency(weeklyTotal);
             tr.appendChild(totalTd);
 
             tbody.appendChild(tr);
         });
     },
-
     renderEmployeeDetails: (id) => {
         const emp = state.employees.find(e => e.id === id);
         if (!emp) return app.navigate('employees');
@@ -577,3 +741,14 @@ const app = {
 
 // Start App
 app.init();
+
+
+
+
+
+
+
+
+
+
+

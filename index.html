@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EFETEBE AQUA & AGRICULTURAL CORPORATION - Payroll</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -30,17 +31,50 @@
                     <i class="fa-solid fa-file-invoice-dollar"></i> Payroll
                 </button>
                 <button class="nav-item" onclick="app.navigate('weekly')">
-                    <i class="fa-solid fa-calendar-check"></i> Weekly Work
+                    <i class="fa-solid fa-calendar-check"></i> Work Week
                 </button>
             </nav>
         </aside>
+
+        <!-- Mobile Offcanvas Menu -->
+        <div class="offcanvas offcanvas-start mobile-offcanvas" tabindex="-1" id="mobileNav" aria-labelledby="mobileNavLabel">
+            <div class="offcanvas-header">
+                <h5 class="offcanvas-title" id="mobileNavLabel">Menu</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+            </div>
+            <div class="offcanvas-body">
+                <div class="brand" style="margin-bottom: 1rem;">
+                    <i class="fa-solid fa-money-bill-wave"></i>
+                    <span style="font-size: 0.9rem; line-height: 1.2;">EFETEBE AQUA & AGRICULTURAL CORP.</span>
+                </div>
+                <nav class="nav-menu offcanvas-menu">
+                    <button class="nav-item active" onclick="app.navigateMobile('dashboard')">
+                        <i class="fa-solid fa-chart-pie"></i> Dashboard
+                    </button>
+                    <button class="nav-item" onclick="app.navigateMobile('employees')">
+                        <i class="fa-solid fa-users"></i> Employees
+                    </button>
+                    <button class="nav-item" onclick="app.navigateMobile('payroll')">
+                        <i class="fa-solid fa-file-invoice-dollar"></i> Payroll
+                    </button>
+                    <button class="nav-item" onclick="app.navigateMobile('weekly')">
+                        <i class="fa-solid fa-calendar-check"></i> Work Week
+                    </button>
+                </nav>
+            </div>
+        </div>
 
         <!-- Main Content -->
         <main class="main-content">
 
             <!-- Header -->
             <header class="top-bar">
-                <h1 id="page-title">Dashboard</h1>
+                <div class="top-bar-left">
+                    <button class="btn btn-outline-primary mobile-menu-btn" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobileNav" aria-controls="mobileNav">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <h1 id="page-title">Dashboard</h1>
+                </div>
                 <div class="user-profile">
                     <span>Admin</span>
                     <div class="avatar"><i class="fa-solid fa-user"></i></div>
@@ -76,7 +110,7 @@
                 <div class="recent-activity">
                     <h2>Recent Work Logs</h2>
                     <div class="table-container">
-                        <table>
+                        <table class="table table-hover align-middle mb-0">
                             <thead>
                                 <tr>
                                     <th>Employee</th>
@@ -101,7 +135,7 @@
                     </button>
                     <div class="search-container">
                         <i class="fa-solid fa-magnifying-glass"></i>
-                        <input type="text" placeholder="Search employees..." oninput="app.renderEmployeeList()"
+                        <input class="form-control" type="text" placeholder="Search employees..." oninput="app.renderEmployeeList()"
                             id="employee-search">
                     </div>
                 </div>  
@@ -122,15 +156,20 @@
                             <i class="fa-solid fa-chevron-right"></i>
                         </button>
                     </div>
-                    <div class="search-container">
-                        <i class="fa-solid fa-magnifying-glass"></i>
-                        <input type="text" placeholder="Search in matrix..." oninput="app.renderWeeklyWork()"
-                            id="weekly-search">
+                    <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+                        <button class="btn btn-primary" onclick="app.openDTRModal()">
+                            <i class="fa-solid fa-plus"></i> Add DTR Record
+                        </button>
+                        <div class="search-container">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input class="form-control" type="text" placeholder="Search in work week..." oninput="app.renderWeeklyWork()"
+                                id="weekly-search">
+                        </div>
                     </div>
                 </div>
 
                 <div class="table-container match-height">
-                    <table class="matrix-table">
+                    <table class="matrix-table table table-bordered align-middle mb-0">
                         <thead>
                             <tr id="weekly-header-row">
                                 <!-- Headers populated by JS -->
@@ -156,7 +195,7 @@
                 </div>
 
                 <div class="table-container" style="margin-top: 2rem;">
-                    <table>
+                    <table class="table table-hover align-middle mb-0">
                         <thead>
                             <tr>
                                 <th>Employee Name</th>
@@ -203,7 +242,7 @@
                         </button>
                     </div>
                     <div class="table-container">
-                        <table>
+                        <table class="table table-hover align-middle mb-0">
                             <thead>
                                 <tr>
                                     <th>Date</th>
@@ -224,7 +263,7 @@
 
     <!-- Modals -->
     <div id="add-employee-modal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content form-modal-content">
             <div class="modal-header">
                 <h2>Add New Employee</h2>
                 <span class="close" onclick="app.closeModal('add-employee-modal')">&times;</span>
@@ -232,23 +271,23 @@
             <form onsubmit="app.handleAddEmployee(event)">
                 <div class="form-group">
                     <label>Full Name</label>
-                    <input type="text" name="name" required placeholder="e.g. Juan dela Cruz">
+                    <input class="form-control" type="text" name="name" required placeholder="e.g. Juan dela Cruz">
                 </div>
                 <div class="form-group">
                     <label>Position/Role</label>
-                    <input type="text" name="role" required placeholder="e.g. Carpenter">
+                    <input class="form-control" type="text" name="role" required placeholder="e.g. Carpenter">
                 </div>
                 <div class="form-group">
                     <label>Contact Number</label>
-                    <input type="text" name="contact" required placeholder="e.g. 09********">
+                    <input class="form-control" type="text" name="contact" required placeholder="e.g. 09********">
                 </div>
                 <div class="form-group">
                     <label>Address</label>
-                    <input type="text" name="address" required placeholder="e.g. Purok 1, Barangay 2, City">
+                    <input class="form-control" type="text" name="address" required placeholder="e.g. Purok 1, Barangay 2, City">
                 </div>
                 <div class="form-group">
                     <label>Work Rate (₱/day)</label>
-                    <input type="text" name="daily-rate" required placeholder="e.g. 450.00">
+                    <input class="form-control" type="text" name="daily-rate" required placeholder="e.g. 450.00">
                 </div>
                 <button type="submit" class="btn btn-primary full-width">Create Employee</button>
             </form>
@@ -256,7 +295,7 @@
     </div>
 
     <div id="add-work-modal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content form-modal-content">
             <div class="modal-header">
                 <h2>Log Work Day</h2>
                 <span class="close" onclick="app.closeModal('add-work-modal')">&times;</span>
@@ -265,23 +304,66 @@
                 <input type="hidden" id="log-employee-id">
                 <div class="form-group">
                     <label>Date</label>
-                    <input type="date" name="date" required id="log-date-input">
+                    <input class="form-control" type="date" name="date" required id="log-date-input">
                 </div>
                 <div class="form-group">
                     <label>Work Description</label>
-                    <input type="text" name="description" required placeholder="e.g. Mixing cement">
+                    <input class="form-control" type="text" name="description" required placeholder="e.g. Mixing cement">
                 </div>
                 <div class="form-group">
                     <label>Daily Rate</label>
-                    <input type="text" value="₱450.00" disabled class="disabled-input">
-                    <small>Fixed daily rate</small>
+                    <input type="text" value="₱450.00" disabled class="form-control disabled-input">
+                    <small class="helper-note">Fixed daily rate</small>
                 </div>
                 <button type="submit" class="btn btn-primary full-width">Save Work Log</button>
             </form>
         </div>
     </div>
 
+
+    <div id="add-dtr-modal" class="modal">
+        <div class="modal-content dtr-modal-content">
+            <div class="modal-header">
+                <h2>Add DTR Record</h2>
+                <span class="close" onclick="app.closeModal('add-dtr-modal')">&times;</span>
+            </div>
+            <form onsubmit="app.handleAddDTRRecord(event)">
+                <div class="form-group">
+                    <label>Employee</label>
+                    <select class="form-select" name="dtr-employee" id="dtr-employee" required></select>
+                </div>
+                <div class="form-group">
+                    <label>Date</label>
+                    <input class="form-control" type="date" name="dtr-date" id="dtr-date" required>
+                </div>
+                <div class="form-group">
+                    <label>Nature of Work</label>
+                    <div class="nature-grid" id="nature-grid">
+                        <label class="nature-option"><input type="checkbox" name="nature" value="carpenter"><span>Carpenter</span></label>
+                        <label class="nature-option"><input type="checkbox" name="nature" value="sugarcanefarmer"><span>Sugarcane Farmer</span></label>
+                        <label class="nature-option"><input type="checkbox" name="nature" value="harvester"><span>Harvester</span></label>
+                        <label class="nature-option"><input type="checkbox" name="nature" value="fieldworker"><span>Field Worker</span></label>
+                    </div>
+                </div>
+                <small class="dtr-note">Weekly earnings are auto-calculated and not manually editable.</small>
+                <button type="submit" class="btn btn-primary full-width" style="margin-top:0.75rem;">Save DTR</button>
+            </form>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
     <script src="script.js"></script>
 </body>
 
 </html>
+
+
+
+
+
+
+
+
+
+
