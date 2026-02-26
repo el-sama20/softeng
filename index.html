@@ -12,6 +12,7 @@
 
 <body>
     <div class="app-container">
+
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="brand">
@@ -36,6 +37,7 @@
 
         <!-- Main Content -->
         <main class="main-content">
+
             <!-- Header -->
             <header class="top-bar">
                 <h1 id="page-title">Dashboard</h1>
@@ -102,7 +104,7 @@
                         <input type="text" placeholder="Search employees..." oninput="app.renderEmployeeList()"
                             id="employee-search">
                     </div>
-                </div>
+                </div>  
                 <div class="employee-grid" id="employee-grid">
                     <!-- Employee Cards populated by JS -->
                 </div>
@@ -180,11 +182,15 @@
                     <div class="details-info">
                         <h2 id="detail-name">Employee Name</h2>
                         <p id="detail-role">Role</p>
+                        <p id="detail-contact">Contact: </p>
+                        <p id="detail-address">Address: </p>
                     </div>
                     <div class="details-stats">
                         <div class="mini-stat">
                             <span>Total Earnings</span>
                             <strong id="detail-total-earnings">₱0</strong>
+                            <span>Daily Rate</span>
+                            <strong id="detail-daily-rate">₱0</strong>
                         </div>
                     </div>
                 </div>
@@ -231,6 +237,18 @@
                 <div class="form-group">
                     <label>Position/Role</label>
                     <input type="text" name="role" required placeholder="e.g. Carpenter">
+                </div>
+                <div class="form-group">
+                    <label>Contact Number</label>
+                    <input type="text" name="contact" required placeholder="e.g. 09********">
+                </div>
+                <div class="form-group">
+                    <label>Address</label>
+                    <input type="text" name="address" required placeholder="e.g. Purok 1, Barangay 2, City">
+                </div>
+                <div class="form-group">
+                    <label>Work Rate (₱/day)</label>
+                    <input type="text" name="daily-rate" required placeholder="e.g. 450.00">
                 </div>
                 <button type="submit" class="btn btn-primary full-width">Create Employee</button>
             </form>

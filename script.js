@@ -96,6 +96,9 @@ const app = {
             id: generateId(),
             name: form.name.value,
             role: form.role.value,
+            contact: form.contact.value,
+            address: form.address.value,
+            dailyRate: parseFloat(form['daily-rate'].value) || 0,
             joinedDate: new Date().toISOString(),
             workLogs: []
         };
@@ -541,6 +544,9 @@ const app = {
 
         document.getElementById('detail-name').innerText = emp.name;
         document.getElementById('detail-role').innerText = emp.role;
+        document.getElementById('detail-contact').innerText = `Contact: ${emp.contact || 'N/A'}`;
+        document.getElementById('detail-address').innerText = `Address: ${emp.address || 'N/A'}`;
+        document.getElementById('detail-daily-rate').innerText = formatCurrency(emp.dailyRate);
 
         const total = emp.workLogs.reduce((sum, log) => sum + log.amount, 0);
         document.getElementById('detail-total-earnings').innerText = formatCurrency(total);
