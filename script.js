@@ -13,13 +13,6 @@ const state = {
     WORK_TYPES: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
 };
 
-const db = {
-    enabled: false,
-    client: null,
-    syncTimer: null,
-    isSyncing: false
-};
-
 // --- Utilities ---
 const generateId = () => '_' + Math.random().toString(36).substr(2, 9);
 
@@ -32,17 +25,9 @@ const getMonday = (d) => {
 
 const formatDate = (d) => d.toISOString().split('T')[0];
 
-const setupSupabase = () => {
-    if (!window.supabase || !window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) return;
-    if (window.SUPABASE_URL.includes('YOUR_') || window.SUPABASE_ANON_KEY.includes('YOUR_')) return;
-    db.client = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
-    db.enabled = true;
-};
-
 const saveState = () => {
     localStorage.setItem('payflow_employees', JSON.stringify(state.employees));
     app.render();
-    app.queueSupabaseSync();
 };
 
 const formatCurrency = (amount) => {
@@ -60,7 +45,6 @@ const getWeekNumber = (d) => {
 const app = {
     init: async () => {
         state.currentWeekStart = getMonday(new Date());
-        setupSupabase();
         await app.loadInitialData();
         app.render();
     },
@@ -68,93 +52,6 @@ const app = {
     loadInitialData: async () => {
         const local = JSON.parse(localStorage.getItem('payflow_employees') || '[]');
         state.employees = Array.isArray(local) ? local : [];
-
-        if (!db.enabled) return;
-
-        const { data: employeesData, error: empErr } = await db.client
-            .from('employees')
-            .select('*')
-            .order('name', { ascending: true });
-        if (empErr) return console.error('Supabase load employees failed:', empErr.message);
-
-        const { data: logsData, error: logErr } = await db.client
-            .from('work_logs')
-            .select('*')
-            .order('work_date', { ascending: false });
-        if (logErr) return console.error('Supabase load work_logs failed:', logErr.message);
-
-        const logsByEmployee = new Map();
-        (logsData || []).forEach(log => {
-            const existing = logsByEmployee.get(log.employee_id) || [];
-            existing.push({
-                id: log.id,
-                date: log.work_date,
-                description: log.description,
-                amount: Number(log.amount) || 0
-            });
-            logsByEmployee.set(log.employee_id, existing);
-        });
-
-        state.employees = (employeesData || []).map(emp => ({
-            id: emp.id,
-            name: emp.name,
-            role: emp.role,
-            contact: emp.contact || '',
-            address: emp.address || '',
-            dailyRate: Number(emp.daily_rate) || 0,
-            joinedDate: emp.joined_date || new Date().toISOString(),
-            workLogs: logsByEmployee.get(emp.id) || []
-        }));
-
-        localStorage.setItem('payflow_employees', JSON.stringify(state.employees));
-    },
-
-    queueSupabaseSync: () => {
-        if (!db.enabled) return;
-        if (db.syncTimer) clearTimeout(db.syncTimer);
-        db.syncTimer = setTimeout(() => app.syncToSupabase(), 500);
-    },
-
-    syncToSupabase: async () => {
-        if (!db.enabled || db.isSyncing) return;
-        db.isSyncing = true;
-        try {
-            const employeeRows = state.employees.map(emp => ({
-                id: emp.id,
-                name: emp.name,
-                role: emp.role,
-                contact: emp.contact || '',
-                address: emp.address || '',
-                daily_rate: Number(emp.dailyRate) || 0,
-                joined_date: emp.joinedDate || new Date().toISOString()
-            }));
-
-            const workLogRows = state.employees.flatMap(emp => (emp.workLogs || []).map(log => ({
-                id: log.id,
-                employee_id: emp.id,
-                work_date: log.date,
-                description: log.description,
-                amount: Number(log.amount) || 0
-            })));
-
-            if (employeeRows.length > 0) {
-                const { error: empUpsertErr } = await db.client
-                    .from('employees')
-                    .upsert(employeeRows, { onConflict: 'id' });
-                if (empUpsertErr) throw empUpsertErr;
-            }
-
-            if (workLogRows.length > 0) {
-                const { error: logUpsertErr } = await db.client
-                    .from('work_logs')
-                    .upsert(workLogRows, { onConflict: 'id' });
-                if (logUpsertErr) throw logUpsertErr;
-            }
-        } catch (err) {
-            console.error('Supabase sync failed:', err.message || err);
-        } finally {
-            db.isSyncing = false;
-        }
     },
 
     navigate: (viewId) => {
