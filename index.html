@@ -1,20 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Payroll management dashboard for EFETEBE Aqua and Agricultural Corporation.">
     <title>EFETEBE AQUA & AGRICULTURAL CORPORATION - Payroll</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-
 <body>
     <div class="app-container">
-
-        <!-- Sidebar -->
         <aside class="sidebar">
             <div class="brand">
                 <i class="fa-solid fa-money-bill-wave"></i>
@@ -36,7 +33,6 @@
             </nav>
         </aside>
 
-        <!-- Mobile Offcanvas Menu -->
         <div class="offcanvas offcanvas-start mobile-offcanvas" tabindex="-1" id="mobileNav" aria-labelledby="mobileNavLabel">
             <div class="offcanvas-header">
                 <h5 class="offcanvas-title" id="mobileNavLabel">Menu</h5>
@@ -64,16 +60,16 @@
             </div>
         </div>
 
-        <!-- Main Content -->
         <main class="main-content">
-
-            <!-- Header -->
             <header class="top-bar">
                 <div class="top-bar-left">
                     <button class="btn btn-outline-primary mobile-menu-btn" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobileNav" aria-controls="mobileNav">
                         <i class="fa-solid fa-bars"></i>
                     </button>
-                    <h1 id="page-title">Dashboard</h1>
+                    <div class="page-heading">
+                        <h1 id="page-title">Dashboard</h1>
+                        <p id="page-subtitle">Overview of payroll activity and workforce data.</p>
+                    </div>
                 </div>
                 <div class="user-profile">
                     <span>Admin</span>
@@ -81,7 +77,6 @@
                 </div>
             </header>
 
-            <!-- Dashboard View -->
             <section id="view-dashboard" class="view active">
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -95,14 +90,14 @@
                         <div class="stat-icon bg-green"><i class="fa-solid fa-calendar-week"></i></div>
                         <div class="stat-info">
                             <h3>Weekly Payroll</h3>
-                            <p id="dash-weekly-payroll">₱0</p>
+                            <p id="dash-weekly-payroll">PHP 0.00</p>
                         </div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon bg-purple"><i class="fa-solid fa-calendar-days"></i></div>
                         <div class="stat-info">
                             <h3>Monthly Payroll</h3>
-                            <p id="dash-monthly-payroll">₱0</p>
+                            <p id="dash-monthly-payroll">PHP 0.00</p>
                         </div>
                     </div>
                 </div>
@@ -119,15 +114,12 @@
                                     <th>Amount</th>
                                 </tr>
                             </thead>
-                            <tbody id="recent-logs-body">
-                                <!-- Populated by JS -->
-                            </tbody>
+                            <tbody id="recent-logs-body"></tbody>
                         </table>
                     </div>
                 </div>
             </section>
 
-            <!-- Employees View -->
             <section id="view-employees" class="view">
                 <div class="action-bar">
                     <button class="btn btn-primary" onclick="app.openModal('add-employee-modal')">
@@ -135,16 +127,12 @@
                     </button>
                     <div class="search-container">
                         <i class="fa-solid fa-magnifying-glass"></i>
-                        <input class="form-control" type="text" placeholder="Search employees..." oninput="app.renderEmployeeList()"
-                            id="employee-search">
+                        <input class="form-control" type="text" placeholder="Search employees..." oninput="app.renderEmployeeList()" id="employee-search">
                     </div>
-                </div>  
-                <div class="employee-grid" id="employee-grid">
-                    <!-- Employee Cards populated by JS -->
                 </div>
+                <div class="employee-grid" id="employee-grid"></div>
             </section>
 
-            <!-- Weekly Work View -->
             <section id="view-weekly" class="view">
                 <div class="action-bar" style="justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
                     <div style="display: flex; gap: 1rem; align-items: center;">
@@ -162,8 +150,7 @@
                         </button>
                         <div class="search-container">
                             <i class="fa-solid fa-magnifying-glass"></i>
-                            <input class="form-control" type="text" placeholder="Search in work week..." oninput="app.renderWeeklyWork()"
-                                id="weekly-search">
+                            <input class="form-control" type="text" placeholder="Search in work week..." oninput="app.renderWeeklyWork()" id="weekly-search">
                         </div>
                     </div>
                 </div>
@@ -171,25 +158,20 @@
                 <div class="table-container match-height">
                     <table class="matrix-table table table-bordered align-middle mb-0">
                         <thead>
-                            <tr id="weekly-header-row">
-                                <!-- Headers populated by JS -->
-                            </tr>
+                            <tr id="weekly-header-row"></tr>
                         </thead>
-                        <tbody id="weekly-table-body">
-                            <!-- Populated by JS -->
-                        </tbody>
+                        <tbody id="weekly-table-body"></tbody>
                     </table>
                 </div>
             </section>
 
-            <!-- Payroll View -->
             <section id="view-payroll" class="view">
                 <div class="stats-grid">
                     <div class="stat-card" style="width: 100%; max-width: 400px;">
                         <div class="stat-icon bg-green"><i class="fa-solid fa-sack-dollar"></i></div>
                         <div class="stat-info">
                             <h3>Grand Total Payroll</h3>
-                            <p id="payroll-grand-total">₱0</p>
+                            <p id="payroll-grand-total">PHP 0.00</p>
                         </div>
                     </div>
                 </div>
@@ -204,14 +186,11 @@
                                 <th>Total Earnings</th>
                             </tr>
                         </thead>
-                        <tbody id="payroll-table-body">
-                            <!-- Populated by JS -->
-                        </tbody>
+                        <tbody id="payroll-table-body"></tbody>
                     </table>
                 </div>
             </section>
 
-            <!-- Employee Details View -->
             <section id="view-details" class="view">
                 <button class="btn-back" onclick="app.navigate('employees')">
                     <i class="fa-solid fa-arrow-left"></i> Back to List
@@ -227,9 +206,9 @@
                     <div class="details-stats">
                         <div class="mini-stat">
                             <span>Total Earnings</span>
-                            <strong id="detail-total-earnings">₱0</strong>
+                            <strong id="detail-total-earnings">PHP 0.00</strong>
                             <span>Daily Rate</span>
-                            <strong id="detail-daily-rate">₱0</strong>
+                            <strong id="detail-daily-rate">PHP 0.00</strong>
                         </div>
                     </div>
                 </div>
@@ -251,9 +230,7 @@
                                     <th>Actions</th>
                                 </tr>
                             </thead>
-                            <tbody id="employee-logs-body">
-                                <!-- Populated by JS -->
-                            </tbody>
+                            <tbody id="employee-logs-body"></tbody>
                         </table>
                     </div>
                 </div>
@@ -261,7 +238,6 @@
         </main>
     </div>
 
-    <!-- Modals -->
     <div id="add-employee-modal" class="modal">
         <div class="modal-content form-modal-content">
             <div class="modal-header">
@@ -270,24 +246,24 @@
             </div>
             <form onsubmit="app.handleAddEmployee(event)">
                 <div class="form-group">
-                    <label>Full Name</label>
-                    <input class="form-control" type="text" name="name" required placeholder="e.g. Juan dela Cruz">
+                    <label for="employee-name">Full Name</label>
+                    <input id="employee-name" class="form-control" type="text" name="name" autocomplete="name" required placeholder="e.g. Juan dela Cruz">
                 </div>
                 <div class="form-group">
-                    <label>Position/Role</label>
-                    <input class="form-control" type="text" name="role" required placeholder="e.g. Carpenter">
+                    <label for="employee-role">Position/Role</label>
+                    <input id="employee-role" class="form-control" type="text" name="role" required placeholder="e.g. Carpenter">
                 </div>
                 <div class="form-group">
-                    <label>Contact Number</label>
-                    <input class="form-control" type="text" name="contact" required placeholder="e.g. 09********">
+                    <label for="employee-contact">Contact Number</label>
+                    <input id="employee-contact" class="form-control" type="tel" name="contact" inputmode="numeric" autocomplete="tel" required placeholder="e.g. 09********">
                 </div>
                 <div class="form-group">
-                    <label>Address</label>
-                    <input class="form-control" type="text" name="address" required placeholder="e.g. Purok 1, Barangay 2, City">
+                    <label for="employee-address">Address</label>
+                    <input id="employee-address" class="form-control" type="text" name="address" autocomplete="street-address" required placeholder="e.g. Purok 1, Barangay 2, City">
                 </div>
                 <div class="form-group">
-                    <label>Work Rate (₱/day)</label>
-                    <input class="form-control" type="text" name="daily-rate" required placeholder="e.g. 450.00">
+                    <label for="employee-rate">Work Rate (PHP/day)</label>
+                    <input id="employee-rate" class="form-control" type="number" min="0" step="0.01" name="daily-rate" required placeholder="e.g. 450.00">
                 </div>
                 <button type="submit" class="btn btn-primary full-width">Create Employee</button>
             </form>
@@ -303,23 +279,22 @@
             <form onsubmit="app.handleAddWorkLog(event)">
                 <input type="hidden" id="log-employee-id">
                 <div class="form-group">
-                    <label>Date</label>
+                    <label for="log-date-input">Date</label>
                     <input class="form-control" type="date" name="date" required id="log-date-input">
                 </div>
                 <div class="form-group">
-                    <label>Work Description</label>
-                    <input class="form-control" type="text" name="description" required placeholder="e.g. Mixing cement">
+                    <label for="work-description">Work Description</label>
+                    <input id="work-description" class="form-control" type="text" name="description" required placeholder="e.g. Mixing cement">
                 </div>
                 <div class="form-group">
                     <label>Daily Rate</label>
-                    <input type="text" value="₱450.00" disabled class="form-control disabled-input">
-                    <small class="helper-note">Fixed daily rate</small>
+                    <input type="text" value="PHP 450.00" disabled class="disabled-input">
+                    <small>Fixed daily rate</small>
                 </div>
                 <button type="submit" class="btn btn-primary full-width">Save Work Log</button>
             </form>
         </div>
     </div>
-
 
     <div id="add-dtr-modal" class="modal">
         <div class="modal-content dtr-modal-content">
@@ -339,10 +314,10 @@
                 <div class="form-group">
                     <label>Nature of Work</label>
                     <div class="nature-grid" id="nature-grid">
-                        <label class="nature-option"><input type="checkbox" name="nature" value="carpenter"><span>Carpenter</span></label>
-                        <label class="nature-option"><input type="checkbox" name="nature" value="sugarcanefarmer"><span>Sugarcane Farmer</span></label>
-                        <label class="nature-option"><input type="checkbox" name="nature" value="harvester"><span>Harvester</span></label>
-                        <label class="nature-option"><input type="checkbox" name="nature" value="fieldworker"><span>Field Worker</span></label>
+                        <label class="nature-option"><input type="checkbox" name="nature" value="Carpenter"><span>Carpenter</span></label>
+                        <label class="nature-option"><input type="checkbox" name="nature" value="Sugarcane Farmer"><span>Sugarcane Farmer</span></label>
+                        <label class="nature-option"><input type="checkbox" name="nature" value="Harvester"><span>Harvester</span></label>
+                        <label class="nature-option"><input type="checkbox" name="nature" value="Field Worker"><span>Field Worker</span></label>
                     </div>
                 </div>
                 <small class="dtr-note">Weekly earnings are auto-calculated and not manually editable.</small>
@@ -350,18 +325,10 @@
             </form>
         </div>
     </div>
+
+    <div id="app-toast" class="app-toast" role="status" aria-live="polite"></div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     <script src="script.js"></script>
 </body>
-
 </html>
-
-
-
-
-
-
-
-
-
-

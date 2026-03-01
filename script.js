@@ -3,6 +3,23 @@
  * Handles state, navigation, and calculations.
  */
 
+const currencyFormatter = new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP'
+});
+
+const shortDateFormatter = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+});
+
+const weekdayFormatter = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric'
+});
+
 // --- State Management ---
 const state = {
     employees: [],
@@ -10,7 +27,8 @@ const state = {
     selectedEmployeeId: null,
     currentWeekStart: null,
     FIXED_DAILY_RATE: 450,
-    WORK_TYPES: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
+    WORK_TYPES: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'],
+    toastTimer: null
 };
 
 // --- Utilities ---
@@ -18,29 +36,44 @@ const generateId = () => '_' + Math.random().toString(36).substr(2, 9);
 
 const getMonday = (d) => {
     d = new Date(d);
-    var day = d.getDay(),
-        diff = d.getDate() - day + (day == 0 ? -6 : 1);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(d.setDate(diff));
 };
 
 const formatDate = (d) => d.toISOString().split('T')[0];
+const formatDisplayDate = (dateStr) => shortDateFormatter.format(new Date(dateStr));
+const formatWeekdayDate = (d) => weekdayFormatter.format(d);
 
 const saveState = () => {
     localStorage.setItem('payflow_employees', JSON.stringify(state.employees));
     app.render();
 };
 
-const formatCurrency = (amount) => {
-    return '₱' + amount.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,' );
-};
+const formatCurrency = (amount) => currencyFormatter.format(Number(amount) || 0);
 
 const getWeekNumber = (d) => {
     d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
     d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-    var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    var weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-    return weekNo;
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 };
+
+const createEmptyState = (message, colspan = 4) =>
+    `<tr><td colspan="${colspan}" class="empty-state">${message}</td></tr>`;
+
+const getPageSubtitle = (viewId) => {
+    const totalEmployees = state.employees.length;
+    const totalLogs = state.employees.reduce((sum, emp) => sum + emp.workLogs.length, 0);
+
+    if (viewId === 'dashboard') return 'Overview of payroll activity and workforce data.';
+    if (viewId === 'employees') return `${totalEmployees} employee${totalEmployees === 1 ? '' : 's'} in the system.`;
+    if (viewId === 'payroll') return 'Summary of total earnings by employee.';
+    if (viewId === 'weekly') return 'Manage daily attendance and nature-of-work records.';
+    if (viewId === 'details') return `${totalLogs} total work log${totalLogs === 1 ? '' : 's'} recorded.`;
+    return '';
+};
+
 // --- App Controller ---
 const app = {
     init: async () => {
@@ -54,12 +87,28 @@ const app = {
         state.employees = Array.isArray(local) ? local : [];
     },
 
+    updatePageContext: (viewId) => {
+        const subtitle = document.getElementById('page-subtitle');
+        if (subtitle) subtitle.innerText = getPageSubtitle(viewId);
+    },
+
+    toast: (message) => {
+        const toastEl = document.getElementById('app-toast');
+        if (!toastEl) return;
+        toastEl.innerText = message;
+        toastEl.classList.add('show');
+        clearTimeout(state.toastTimer);
+        state.toastTimer = setTimeout(() => {
+            toastEl.classList.remove('show');
+        }, 2200);
+    },
+
     navigate: (viewId) => {
         state.currentView = viewId;
 
-        // UI Updates for Navigation
         document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
-        document.getElementById(`view-${viewId === 'details' ? 'details' : viewId}`).classList.add('active');
+        const viewEl = document.getElementById(`view-${viewId === 'details' ? 'details' : viewId}`);
+        if (viewEl) viewEl.classList.add('active');
 
         document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
         if (viewId !== 'details') {
@@ -67,7 +116,6 @@ const app = {
                 .forEach(btn => btn.classList.add('active'));
         }
 
-        // Specific View logic
         if (viewId === 'dashboard') {
             document.getElementById('page-title').innerText = 'Dashboard';
             app.renderDashboard();
@@ -84,8 +132,9 @@ const app = {
             document.getElementById('page-title').innerText = 'Employee Details';
             app.renderEmployeeDetails(state.selectedEmployeeId);
         }
-    },
 
+        app.updatePageContext(viewId);
+    },
 
     navigateMobile: (viewId) => {
         app.navigate(viewId);
@@ -94,25 +143,27 @@ const app = {
             bootstrap.Offcanvas.getOrCreateInstance(offcanvasEl).hide();
         }
     },
+
     openModal: (modalId) => {
-        document.getElementById(modalId).classList.add('active');
+        const modal = document.getElementById(modalId);
+        if (modal) modal.classList.add('active');
     },
 
     closeModal: (modalId) => {
-        document.getElementById(modalId).classList.remove('active');
+        const modal = document.getElementById(modalId);
+        if (modal) modal.classList.remove('active');
     },
 
     // --- Actions ---
-
     handleAddEmployee: (e) => {
         e.preventDefault();
         const form = e.target;
         const newEmployee = {
             id: generateId(),
-            name: form.name.value,
-            role: form.role.value,
-            contact: form.contact.value,
-            address: form.address.value,
+            name: form.name.value.trim(),
+            role: form.role.value.trim(),
+            contact: form.contact.value.trim(),
+            address: form.address.value.trim(),
             dailyRate: parseFloat(form['daily-rate'].value) || 0,
             joinedDate: new Date().toISOString(),
             workLogs: []
@@ -121,7 +172,8 @@ const app = {
         saveState();
         form.reset();
         app.closeModal('add-employee-modal');
-        app.navigate('employees'); // Switch to list view to see new employee
+        app.toast('Employee added successfully.');
+        app.navigate('employees');
     },
 
     viewEmployee: (id) => {
@@ -133,41 +185,42 @@ const app = {
         e.preventDefault();
         const form = e.target;
         const empId = state.selectedEmployeeId;
-        const employee = state.employees.find(e => e.id === empId);
+        const employee = state.employees.find(emp => emp.id === empId);
 
-        if (employee) {
-            const newLog = {
-                id: generateId(),
-                date: form.date.value, // YYYY-MM-DD
-                description: form.description.value,
-                amount: state.FIXED_DAILY_RATE
-            };
-            employee.workLogs.push(newLog);
-            // Sort logs by date descending
-            employee.workLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
+        if (!employee) return;
 
-            saveState();
-            form.reset();
-            app.closeModal('add-work-modal');
-            app.renderEmployeeDetails(empId); // Refresh details view
-        }
+        const newLog = {
+            id: generateId(),
+            date: form.date.value,
+            description: form.description.value.trim(),
+            amount: state.FIXED_DAILY_RATE
+        };
+        employee.workLogs.push(newLog);
+        employee.workLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        saveState();
+        form.reset();
+        app.closeModal('add-work-modal');
+        app.toast('Work log saved.');
+        app.renderEmployeeDetails(empId);
     },
 
     deleteEmployee: (id) => {
         if (confirm('Are you sure you want to remove this employee? This action cannot be undone.')) {
-            state.employees = state.employees.filter(e => e.id !== id);
+            state.employees = state.employees.filter(emp => emp.id !== id);
             saveState();
+            app.toast('Employee deleted.');
             app.navigate('employees');
         }
     },
 
     deleteWorkLog: (empId, logId) => {
-        const employee = state.employees.find(e => e.id === empId);
-        if (employee) {
-            employee.workLogs = employee.workLogs.filter(l => l.id !== logId);
-            saveState();
-            app.renderEmployeeDetails(empId);
-        }
+        const employee = state.employees.find(emp => emp.id === empId);
+        if (!employee) return;
+        employee.workLogs = employee.workLogs.filter(log => log.id !== logId);
+        saveState();
+        app.toast('Work log removed.');
+        app.renderEmployeeDetails(empId);
     },
 
     changeWeek: (offset) => {
@@ -197,8 +250,8 @@ const app = {
             cb.checked = false;
         });
 
-        const employee = state.employees.find(e => e.id === defaultEmpId);
-        const existingLog = employee ? employee.workLogs.find(l => l.date === defaultDate) : null;
+        const employee = state.employees.find(emp => emp.id === defaultEmpId);
+        const existingLog = employee ? employee.workLogs.find(log => log.date === defaultDate) : null;
         if (existingLog && existingLog.description.startsWith('Work: ')) {
             const selected = existingLog.description.substring(6).split(', ');
             document.querySelectorAll('#add-dtr-modal input[name="nature"]').forEach(cb => {
@@ -210,7 +263,7 @@ const app = {
     },
 
     setDTRStatus: (empId, dateStr, checked) => {
-        const employee = state.employees.find(e => e.id === empId);
+        const employee = state.employees.find(emp => emp.id === empId);
         if (!employee) return;
 
         if (checked) {
@@ -220,6 +273,7 @@ const app = {
 
         employee.workLogs = employee.workLogs.filter(log => log.date !== dateStr);
         saveState();
+        app.toast('DTR record removed.');
         app.renderWeeklyWork();
     },
 
@@ -257,14 +311,15 @@ const app = {
         employee.workLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
         saveState();
         app.closeModal('add-dtr-modal');
+        app.toast('DTR record saved.');
         app.renderWeeklyWork();
     },
 
     toggleWorkType: (empId, dateStr, type) => {
-        const employee = state.employees.find(e => e.id === empId);
+        const employee = state.employees.find(emp => emp.id === empId);
         if (!employee) return;
 
-        let log = employee.workLogs.find(l => l.date === dateStr);
+        let log = employee.workLogs.find(item => item.date === dateStr);
         let workTypes = [];
 
         if (log) {
@@ -274,19 +329,15 @@ const app = {
             }
         }
 
-        // Toggle logic
         if (workTypes.includes(type)) {
-            workTypes = workTypes.filter(t => t !== type);
+            workTypes = workTypes.filter(item => item !== type);
         } else {
             workTypes.push(type);
             workTypes.sort();
         }
 
-        // Update Data
         if (workTypes.length === 0) {
-            if (log) {
-                employee.workLogs = employee.workLogs.filter(l => l.id !== log.id);
-            }
+            if (log) employee.workLogs = employee.workLogs.filter(item => item.id !== log.id);
         } else {
             const desc = `Work: ${workTypes.join(', ')}`;
             if (log) {
@@ -303,59 +354,12 @@ const app = {
         }
 
         saveState();
-
-        // --- Partial DOM Update (No full re-render) ---
-
-        // 1. Update Checkbox UI
-        const checkEl = document.getElementById(`check-${empId}-${dateStr}-${type}`);
-        if (checkEl) {
-            checkEl.classList.toggle('checked');
-        }
-
-        // 2. Update Dropdown Button Text
-        const btnEl = document.getElementById(`btn-${empId}-${dateStr}`);
-        if (btnEl) {
-            const span = btnEl.querySelector('span');
-            span.innerText = workTypes.length > 0 ? workTypes.join(', ') : 'Select';
-        }
-
-        // 3. Update Weekly Total for this Row (re-calculate from all logs in current week)
-        // We know the current week's logs for this employee
-        // Current dates are calculated in renderWeeklyWork, but we can do a quick sum here
-        // Or simpler: iterate active DOM cells? No, stick to data.
-
-        // We need the range of the current week to sum correctly
-        const start = new Date(state.currentWeekStart);
-        const end = new Date(start);
-        end.setDate(end.getDate() + 6);
-
-        let weeklyTotal = 0;
-        // Re-fetch employee logs to ensure latest state
-        // Simple filter: date between start and end (inclusive)
-        // Convert to YYYY-MM-DD for comparison
-        // Actually, we can just use the same logic as renderWeeklyWork if we had the dates
-        // Let's just generate the 7 dates strings
-        for (let i = 0; i < 7; i++) {
-            const d = new Date(start);
-            d.setDate(d.getDate() + i);
-            const dStr = formatDate(d);
-            const dayLog = employee.workLogs.find(l => l.date === dStr);
-            if (dayLog) weeklyTotal += dayLog.amount;
-        }
-
-        const totalEl = document.getElementById(`total-${empId}`);
-        if (totalEl) totalEl.innerText = formatCurrency(weeklyTotal);
-
-        // app.renderWeeklyWork(); // Removed to keep dropdown open
     },
 
     // --- Rendering ---
-
     render: () => {
-        // Re-renders current view
         app.navigate(state.currentView);
 
-        // Global Click Listener for Dropdowns (ensure single bind)
         window.onclick = (event) => {
             if (!event.target.closest('.dropdown-wrapper')) {
                 document.querySelectorAll('.dropdown-content').forEach(el => el.classList.remove('show'));
@@ -365,42 +369,26 @@ const app = {
 
     renderDashboard: () => {
         const totalEmployees = state.employees.length;
-
         let weeklyPayroll = 0;
         let monthlyPayroll = 0;
         const now = new Date();
         const currentWeek = getWeekNumber(now);
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
-
         const recentLogs = [];
 
         state.employees.forEach(emp => {
             emp.workLogs.forEach(log => {
                 const logDate = new Date(log.date);
-
-                // Monthly Calculation
-                if (logDate.getMonth() === currentMonth && logDate.getFullYear() === currentYear) {
-                    monthlyPayroll += log.amount;
-                }
-
-                // Weekly Calculation (Simple check matching current week number)
-                if (getWeekNumber(logDate) === currentWeek && logDate.getFullYear() === currentYear) {
-                    weeklyPayroll += log.amount;
-                }
-
-                recentLogs.push({
-                    empName: emp.name,
-                    ...log
-                });
+                if (logDate.getMonth() === currentMonth && logDate.getFullYear() === currentYear) monthlyPayroll += Number(log.amount) || 0;
+                if (getWeekNumber(logDate) === currentWeek && logDate.getFullYear() === currentYear) weeklyPayroll += Number(log.amount) || 0;
+                recentLogs.push({ empName: emp.name, ...log });
             });
         });
 
-        // Top 5 recent logs
         recentLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
         const top5 = recentLogs.slice(0, 5);
 
-        // Update DOM
         document.getElementById('dash-total-employees').innerText = totalEmployees;
         document.getElementById('dash-weekly-payroll').innerText = formatCurrency(weeklyPayroll);
         document.getElementById('dash-monthly-payroll').innerText = formatCurrency(monthlyPayroll);
@@ -408,19 +396,20 @@ const app = {
         const tbody = document.getElementById('recent-logs-body');
         tbody.innerHTML = '';
         if (top5.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#999;">No work logs yet.</td></tr>';
-        } else {
-            top5.forEach(log => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${log.empName}</td>
-                    <td>${log.date}</td>
-                    <td>${log.description}</td>
-                    <td style="color: var(--secondary); font-weight: 600;">${formatCurrency(log.amount)}</td>
-                `;
-                tbody.appendChild(tr);
-            });
+            tbody.innerHTML = createEmptyState('No work logs yet. Add your first DTR or work log to start tracking.', 4);
+            return;
         }
+
+        top5.forEach(log => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${log.empName}</td>
+                <td>${formatDisplayDate(log.date)}</td>
+                <td>${log.description}</td>
+                <td style="color: var(--success); font-weight: 700;">${formatCurrency(log.amount)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
     },
 
     renderEmployeeList: () => {
@@ -428,21 +417,19 @@ const app = {
         grid.innerHTML = '';
 
         const searchInput = document.getElementById('employee-search');
-        const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+        const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
 
-        // Filter employees
         const filtered = state.employees.filter(emp =>
-            emp.name.toLowerCase().includes(searchTerm) ||
-            emp.role.toLowerCase().includes(searchTerm)
+            emp.name.toLowerCase().includes(searchTerm) || emp.role.toLowerCase().includes(searchTerm)
         );
 
         if (state.employees.length === 0) {
-            grid.innerHTML = '<p style="text-align:center; grid-column: 1/-1; color:#999;">No employees found. Click "Add Employee" to get started.</p>';
+            grid.innerHTML = '<p class="empty-state" style="grid-column: 1/-1;">No employees yet. Click "Add Employee" to get started.</p>';
             return;
         }
 
         if (filtered.length === 0) {
-            grid.innerHTML = '<p style="text-align:center; grid-column: 1/-1; color:#999;">No employees match your search.</p>';
+            grid.innerHTML = '<p class="empty-state" style="grid-column: 1/-1;">No employees match your search.</p>';
             return;
         }
 
@@ -450,14 +437,10 @@ const app = {
             const card = document.createElement('div');
             card.className = 'employee-card';
             card.onclick = (e) => {
-                // Prevent navigating if delete button is clicked
-                if (!e.target.closest('.btn-delete')) {
-                    app.viewEmployee(emp.id);
-                }
+                if (!e.target.closest('.btn-delete')) app.viewEmployee(emp.id);
             };
 
-            // Calculate total earnings
-            const total = emp.workLogs.reduce((sum, log) => sum + log.amount, 0);
+            const total = emp.workLogs.reduce((sum, log) => sum + (Number(log.amount) || 0), 0);
 
             card.innerHTML = `
                 <div class="card-header">
@@ -469,12 +452,12 @@ const app = {
                     <h3>${emp.name}</h3>
                     <p>${emp.role}</p>
                 </div>
-                <div style="margin-top: auto; padding-top: 1rem; border-top: 1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
+                <div style="margin-top: auto; padding-top: 0.8rem; border-top: 1px solid #edf2f1; display:flex; justify-content:space-between; align-items:center;">
                     <div>
-                        <small style="color:#999">Total Earnings</small>
-                        <div style="font-weight:700; color:var(--primary);">${formatCurrency(total)}</div>
+                        <small style="color:#64748b">Total Earnings</small>
+                        <div style="font-weight:800; color:var(--primary);">${formatCurrency(total)}</div>
                     </div>
-                    <button class="btn btn-delete" style="color: #ef4444; background:none; padding:0.5rem;" onclick="app.deleteEmployee('${emp.id}')">
+                    <button class="btn btn-delete" onclick="app.deleteEmployee('${emp.id}')">
                         <i class="fa-solid fa-trash"></i>
                     </button>
                 </div>
@@ -488,23 +471,22 @@ const app = {
         tbody.innerHTML = '';
 
         let grandTotal = 0;
-
         state.employees.forEach(emp => {
-            const totalEarnings = emp.workLogs.reduce((sum, log) => sum + log.amount, 0);
+            const totalEarnings = emp.workLogs.reduce((sum, log) => sum + (Number(log.amount) || 0), 0);
             grandTotal += totalEarnings;
 
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td><strong>${emp.name}</strong></td>
                 <td>${emp.role}</td>
-                <td>${emp.workLogs.length} days</td>
-                <td style="color: var(--secondary); font-weight: 600;">${formatCurrency(totalEarnings)}</td>
+                <td>${emp.workLogs.length} day${emp.workLogs.length === 1 ? '' : 's'}</td>
+                <td style="color: var(--success); font-weight: 700;">${formatCurrency(totalEarnings)}</td>
             `;
             tbody.appendChild(tr);
         });
 
         if (state.employees.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#999;">No employees found.</td></tr>';
+            tbody.innerHTML = createEmptyState('No employees found.', 4);
         }
 
         document.getElementById('payroll-grand-total').innerText = formatCurrency(grandTotal);
@@ -512,7 +494,6 @@ const app = {
 
     toggleDropdown: (id, event) => {
         if (event) event.stopPropagation();
-        // Close others
         document.querySelectorAll('.dropdown-content').forEach(el => {
             if (el.id !== id) el.classList.remove('show');
         });
@@ -526,7 +507,7 @@ const app = {
         end.setDate(end.getDate() + 6);
 
         document.getElementById('weekly-date-range').innerText =
-            `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
+            `${shortDateFormatter.format(start)} - ${shortDateFormatter.format(end)}`;
 
         const headerRow = document.getElementById('weekly-header-row');
         headerRow.innerHTML = '<th>Employee</th>';
@@ -537,10 +518,7 @@ const app = {
             d.setDate(d.getDate() + i);
             const dateStr = formatDate(d);
             currentDates.push({ dateObj: d, dateStr });
-
-            const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
-            const dayDate = d.getDate();
-            headerRow.innerHTML += `<th>${dayName} ${dayDate}</th>`;
+            headerRow.innerHTML += `<th>${formatWeekdayDate(d)}</th>`;
         }
         headerRow.innerHTML += '<th>Weekly Earnings</th>';
 
@@ -548,33 +526,31 @@ const app = {
         tbody.innerHTML = '';
 
         const searchInput = document.getElementById('weekly-search');
-        const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+        const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
         const filtered = state.employees.filter(emp =>
-            emp.name.toLowerCase().includes(searchTerm) ||
-            emp.role.toLowerCase().includes(searchTerm)
+            emp.name.toLowerCase().includes(searchTerm) || emp.role.toLowerCase().includes(searchTerm)
         );
 
         if (state.employees.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:2rem; color:#999">No employees found.</td></tr>';
+            tbody.innerHTML = createEmptyState('No employees found.', 9);
             return;
         }
 
         if (filtered.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:2rem; color:#999">No employees match your search.</td></tr>';
+            tbody.innerHTML = createEmptyState('No employees match your search.', 9);
             return;
         }
 
         filtered.forEach(emp => {
             const tr = document.createElement('tr');
             const nameTd = document.createElement('td');
-            nameTd.innerHTML = `<div><strong>${emp.name}</strong><br><small style="color:#999">${emp.role}</small></div>`;
+            nameTd.innerHTML = `<div><strong>${emp.name}</strong><br><small style="color:#64748b">${emp.role}</small></div>`;
             tr.appendChild(nameTd);
 
             let weeklyTotal = 0;
-
             currentDates.forEach(dayInfo => {
                 const td = document.createElement('td');
-                const log = emp.workLogs.find(l => l.date === dayInfo.dateStr);
+                const log = emp.workLogs.find(item => item.date === dayInfo.dateStr);
                 if (log) weeklyTotal += Number(log.amount) || 0;
 
                 const natureText = log && log.description ? log.description.replace('Work: ', '') : 'Set nature';
@@ -582,7 +558,7 @@ const app = {
                     <div style="display:flex; flex-direction:column; align-items:center; gap:0.35rem;">
                         <input type="checkbox" ${log ? 'checked' : ''}
                             onchange="app.setDTRStatus('${emp.id}', '${dayInfo.dateStr}', this.checked)">
-                        <button class="btn btn-secondary" style="padding:0.25rem 0.5rem; font-size:0.75rem;"
+                        <button class="btn btn-secondary" style="padding:0.25rem 0.45rem; font-size:0.72rem;"
                             onclick="app.openDTRModal('${emp.id}', '${dayInfo.dateStr}')">
                             ${natureText}
                         </button>
@@ -592,16 +568,16 @@ const app = {
             });
 
             const totalTd = document.createElement('td');
-            totalTd.style.fontWeight = '700';
-            totalTd.style.color = 'var(--secondary)';
+            totalTd.style.fontWeight = '800';
+            totalTd.style.color = 'var(--success)';
             totalTd.innerText = formatCurrency(weeklyTotal);
             tr.appendChild(totalTd);
-
             tbody.appendChild(tr);
         });
     },
+
     renderEmployeeDetails: (id) => {
-        const emp = state.employees.find(e => e.id === id);
+        const emp = state.employees.find(item => item.id === id);
         if (!emp) return app.navigate('employees');
 
         document.getElementById('detail-name').innerText = emp.name;
@@ -610,44 +586,32 @@ const app = {
         document.getElementById('detail-address').innerText = `Address: ${emp.address || 'N/A'}`;
         document.getElementById('detail-daily-rate').innerText = formatCurrency(emp.dailyRate);
 
-        const total = emp.workLogs.reduce((sum, log) => sum + log.amount, 0);
+        const total = emp.workLogs.reduce((sum, log) => sum + (Number(log.amount) || 0), 0);
         document.getElementById('detail-total-earnings').innerText = formatCurrency(total);
 
         const tbody = document.getElementById('employee-logs-body');
         tbody.innerHTML = '';
 
         if (emp.workLogs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#999;">No work logs for this employee.</td></tr>';
-        } else {
-            emp.workLogs.forEach(log => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${log.date}</td>
-                    <td>${log.description}</td>
-                    <td>${formatCurrency(log.amount)}</td>
-                    <td>
-                        <button class="btn" style="color:#ef4444; padding:0.2rem 0.5rem;" onclick="app.deleteWorkLog('${emp.id}', '${log.id}')">
-                            <i class="fa-solid fa-trash"></i>
-                        </button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
+            tbody.innerHTML = createEmptyState('No work logs for this employee.', 4);
+            return;
         }
+
+        emp.workLogs.forEach(log => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${formatDisplayDate(log.date)}</td>
+                <td>${log.description}</td>
+                <td>${formatCurrency(log.amount)}</td>
+                <td>
+                    <button class="btn btn-delete" style="padding:0.35rem 0.55rem;" onclick="app.deleteWorkLog('${emp.id}', '${log.id}')">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
     }
 };
 
-// Start App
 app.init();
-
-
-
-
-
-
-
-
-
-
-
-
