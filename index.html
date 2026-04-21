@@ -11,13 +11,78 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
+    <section id="auth-gate" class="auth-gate" aria-live="polite">
+        <div class="auth-shell">
+            <div id="auth-notice" class="auth-notice" aria-live="assertive"></div>
+            <div id="auth-login-card" class="auth-card">
+                <div class="auth-card-header">
+                    <div class="auth-company">
+                        <i class="fa-solid fa-money-bill-wave"></i>
+                        <span>EFETEBE AQUA & AGRICULTURAL CORP.</span>
+                    </div>
+                    <h2>Admin Login</h2>
+                    <p>Sign in to access payroll records and settings.</p>
+                </div>
+                <form class="auth-form" onsubmit="app.handleLogin(event)">
+                    <div class="form-group">
+                        <label for="auth-login-username">Username</label>
+                        <input id="auth-login-username" class="form-control" type="text" name="username" required autocomplete="username" placeholder="Enter admin username">
+                    </div>
+                    <div class="form-group">
+                        <label for="auth-login-password">Password</label>
+                        <input id="auth-login-password" class="form-control" type="password" name="password" required autocomplete="current-password" placeholder="Enter password">
+                    </div>
+                    <button type="submit" class="btn btn-primary full-width">Log In</button>
+                </form>
+                <div class="auth-switch">
+                    <span>No admin account yet?</span>
+                    <button type="button" class="btn-auth-link" onclick="app.showAuthView('register')">Register Admin</button>
+                </div>
+            </div>
+
+            <div id="auth-register-card" class="auth-card">
+                <div class="auth-card-header">
+                    <div class="auth-company">
+                        <i class="fa-solid fa-money-bill-wave"></i>
+                        <span>EFETEBE AQUA & AGRICULTURAL CORP.</span>
+                    </div>
+                    <h2>Register Admin</h2>
+                    <p>Create an administrator account for this payroll app.</p>
+                </div>
+                <form class="auth-form" onsubmit="app.handleRegister(event)">
+                    <div class="form-group">
+                        <label for="auth-register-name">Admin Name</label>
+                        <input id="auth-register-name" class="form-control" type="text" name="name" required autocomplete="name" placeholder="e.g. Maria Santos">
+                    </div>
+                    <div class="form-group">
+                        <label for="auth-register-username">Username</label>
+                        <input id="auth-register-username" class="form-control" type="text" name="username" required autocomplete="username" placeholder="Choose a username">
+                    </div>
+                    <div class="form-group">
+                        <label for="auth-register-password">Password</label>
+                        <input id="auth-register-password" class="form-control" type="password" name="password" required autocomplete="new-password" minlength="6" placeholder="At least 6 characters">
+                    </div>
+                    <div class="form-group">
+                        <label for="auth-register-confirm-password">Confirm Password</label>
+                        <input id="auth-register-confirm-password" class="form-control" type="password" name="confirm-password" required autocomplete="new-password" minlength="6" placeholder="Re-enter password">
+                    </div>
+                    <button type="submit" class="btn btn-primary full-width">Create Admin Account</button>
+                </form>
+                <div class="auth-switch">
+                    <span>Already registered?</span>
+                    <button type="button" class="btn-auth-link" onclick="app.showAuthView('login')">Back to Login</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <div class="app-container">
         <aside class="sidebar">
             <div class="brand">
                 <i class="fa-solid fa-money-bill-wave"></i>
                 <span style="font-size: 0.9rem; line-height: 1.2;">EFETEBE AQUA & AGRICULTURAL CORP.</span>
             </div>
-            <nav class="nav-menu">
+            <nav class="nav-menu sidebar-nav-main">
                 <button class="nav-item active" onclick="app.navigate('dashboard')">
                     <i class="fa-solid fa-chart-pie"></i> Dashboard
                 </button>
@@ -30,8 +95,13 @@
                 <button class="nav-item" onclick="app.navigate('weekly')">
                     <i class="fa-solid fa-calendar-check"></i> Work Week
                 </button>
+            </nav>
+            <nav class="nav-menu sidebar-nav-bottom">
                 <button class="nav-item" onclick="app.navigate('settings')">
                     <i class="fa-solid fa-gear"></i> Settings
+                </button>
+                <button class="nav-item" onclick="app.logout()">
+                    <i class="fa-solid fa-right-from-bracket"></i> Log Out
                 </button>
             </nav>
         </aside>
@@ -46,7 +116,7 @@
                     <i class="fa-solid fa-money-bill-wave"></i>
                     <span style="font-size: 0.9rem; line-height: 1.2;">EFETEBE AQUA & AGRICULTURAL CORP.</span>
                 </div>
-                <nav class="nav-menu offcanvas-menu">
+                <nav class="nav-menu offcanvas-menu offcanvas-nav-main">
                     <button class="nav-item active" onclick="app.navigateMobile('dashboard')">
                         <i class="fa-solid fa-chart-pie"></i> Dashboard
                     </button>
@@ -59,8 +129,13 @@
                     <button class="nav-item" onclick="app.navigateMobile('weekly')">
                         <i class="fa-solid fa-calendar-check"></i> Work Week
                     </button>
+                </nav>
+                <nav class="nav-menu offcanvas-menu offcanvas-nav-bottom">
                     <button class="nav-item" onclick="app.navigateMobile('settings')">
                         <i class="fa-solid fa-gear"></i> Settings
+                    </button>
+                    <button class="nav-item" onclick="app.logout()">
+                        <i class="fa-solid fa-right-from-bracket"></i> Log Out
                     </button>
                 </nav>
             </div>
@@ -201,24 +276,67 @@
             </section>
 
             <section id="view-settings" class="view">
-                <div class="settings-panel">
-                    <h2>Payroll and Profile Settings</h2>
-                    <p>Set the weekly payroll amount and update your profile details.</p>
-                    <form class="settings-form" onsubmit="app.handleSaveSettings(event)">
-                        <div class="form-group">
-                            <label for="settings-weekly-payroll">Weekly Payroll Amount (PHP)</label>
-                            <input id="settings-weekly-payroll" class="form-control" type="number" min="0" step="0.01" name="weekly-payroll" required placeholder="e.g. 15000.00">
+                <div class="settings-grid">
+                    <div class="settings-panel">
+                        <h2>Payroll and Profile Settings</h2>
+                        <p>Adjust default work day amount and keep your profile details up to date.</p>
+                        <div class="settings-form">
+                            <div class="form-group">
+                                <label for="settings-weekly-payroll">Work Day Amount (PHP)</label>
+                                <input id="settings-weekly-payroll" class="form-control" type="number" min="0" step="0.01" name="weekly-payroll" required placeholder="e.g. 450.00">
+                                <small class="field-note">Work logs and DTR earnings use this value when it is greater than zero.</small>
+                                <div class="field-actions">
+                                    <button type="button" id="settings-edit-weekly-payroll" class="btn btn-secondary" onclick="app.enableSettingsField('weekly-payroll')">Edit</button>
+                                    <button type="button" id="settings-update-weekly-payroll" class="btn btn-primary" onclick="app.updateSettingsField('weekly-payroll')">Update</button>
+                                </div>
+                            </div>
+                            <div class="settings-insight">
+                                <span>Current week logs total</span>
+                                <strong id="settings-current-week-total">PHP 0.00</strong>
+                            </div>
+                            <div class="form-group">
+                                <label for="settings-profile-name">Profile Name</label>
+                                <input id="settings-profile-name" class="form-control" type="text" name="profile-name" required placeholder="e.g. Maria Santos">
+                                <div class="field-actions">
+                                    <button type="button" id="settings-edit-profile-name" class="btn btn-secondary" onclick="app.enableSettingsField('profile-name')">Edit</button>
+                                    <button type="button" id="settings-update-profile-name" class="btn btn-primary" onclick="app.updateSettingsField('profile-name')">Update</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="settings-profile-role">Profile Role</label>
+                                <input id="settings-profile-role" class="form-control" type="text" name="profile-role" required placeholder="e.g. Payroll Admin">
+                                <div class="field-actions">
+                                    <button type="button" id="settings-edit-profile-role" class="btn btn-secondary" onclick="app.enableSettingsField('profile-role')">Edit</button>
+                                    <button type="button" id="settings-update-profile-role" class="btn btn-primary" onclick="app.updateSettingsField('profile-role')">Update</button>
+                                </div>
+                            </div>
+                            <div class="settings-actions">
+                                <button type="button" class="btn btn-secondary" onclick="app.resetSettingsForm()">Reset</button>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="settings-profile-name">Profile Name</label>
-                            <input id="settings-profile-name" class="form-control" type="text" name="profile-name" required placeholder="e.g. Maria Santos">
+                    </div>
+
+                    <div class="settings-panel settings-side-panel">
+                        <h2>Session and Security</h2>
+                        <p>Review account stats and log out when you are done using this device.</p>
+                        <div class="settings-summary">
+                            <div class="summary-item">
+                                <span>Saved employees</span>
+                                <strong id="settings-total-employees">0</strong>
+                            </div>
+                            <div class="summary-item">
+                                <span>Total work logs</span>
+                                <strong id="settings-total-logs">0</strong>
+                            </div>
+                            <div class="summary-item">
+                                <span>Last settings update</span>
+                                <strong id="settings-last-updated">Not yet saved</strong>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="settings-profile-role">Profile Role</label>
-                            <input id="settings-profile-role" class="form-control" type="text" name="profile-role" required placeholder="e.g. Payroll Admin">
-                        </div>
-                        <button type="submit" class="btn btn-primary">Save Settings</button>
-                    </form>
+                        <button type="button" class="btn btn-logout full-width" onclick="app.logout()">
+                            <i class="fa-solid fa-right-from-bracket"></i> Log Out
+                        </button>
+                    </div>
                 </div>
             </section>
 
@@ -318,9 +436,9 @@
                     <input id="work-description" class="form-control" type="text" name="description" required placeholder="e.g. Mixing cement">
                 </div>
                 <div class="form-group">
-                    <label>Daily Rate</label>
-                    <input type="text" value="PHP 450.00" disabled class="disabled-input">
-                    <small>Fixed daily rate</small>
+                    <label>Work Amount</label>
+                    <input type="text" value="Auto-applied from Settings" disabled class="disabled-input">
+                    <small>Uses Work Day Amount from Settings when configured.</small>
                 </div>
                 <button type="submit" class="btn btn-primary full-width">Save Work Log</button>
             </form>

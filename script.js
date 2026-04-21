@@ -20,20 +20,89 @@ const weekdayFormatter = new Intl.DateTimeFormat('en-US', {
     day: 'numeric'
 });
 
+const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+});
+
+const STORAGE_KEYS = {
+    employees: 'payflow_employees',
+    settings: 'payflow_settings',
+    isLoggedIn: 'payflow_is_logged_in',
+    currentAdminId: 'payflow_current_admin_id',
+    admins: 'payflow_admins'
+};
+
+const SETTINGS_FIELD_CONFIG = {
+    'weekly-payroll': {
+        inputId: 'settings-weekly-payroll',
+        editBtnId: 'settings-edit-weekly-payroll',
+        updateBtnId: 'settings-update-weekly-payroll',
+        stateKey: 'weeklyPayrollAmount',
+        normalize: (value) => Math.max(0, parseFloat(value) || 0),
+        label: 'Work day amount'
+    },
+    'profile-name': {
+        inputId: 'settings-profile-name',
+        editBtnId: 'settings-edit-profile-name',
+        updateBtnId: 'settings-update-profile-name',
+        stateKey: 'profileName',
+        normalize: (value) => value.toString().trim() || 'Admin User',
+        adminKey: 'name',
+        label: 'Profile name'
+    },
+    'profile-role': {
+        inputId: 'settings-profile-role',
+        editBtnId: 'settings-edit-profile-role',
+        updateBtnId: 'settings-update-profile-role',
+        stateKey: 'profileRole',
+        normalize: (value) => value.toString().trim() || 'Administrator',
+        adminKey: 'role',
+        label: 'Profile role'
+    }
+};
+
 // --- State Management ---
 const state = {
     employees: [],
+    admins: [],
     currentView: 'dashboard',
     selectedEmployeeId: null,
     currentWeekStart: null,
+    currentAdminId: null,
+    isLoggedIn: true,
+    authView: 'login',
+    authNotice: {
+        message: '',
+        type: 'info'
+    },
     settings: {
         weeklyPayrollAmount: 0,
         profileName: 'Admin User',
-        profileRole: 'Administrator'
+        profileRole: 'Administrator',
+        lastUpdatedAt: null
     },
     FIXED_DAILY_RATE: 450,
     WORK_TYPES: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'],
     toastTimer: null
+};
+
+const getConfiguredWorkAmount = (employee = null) => {
+    const configuredAmount = Number(state.settings.weeklyPayrollAmount) || 0;
+    if (configuredAmount > 0) return configuredAmount;
+    if (employee && Number(employee.dailyRate) > 0) return Number(employee.dailyRate);
+    return state.FIXED_DAILY_RATE;
+};
+
+const getEffectiveLogAmount = (employee, log) => {
+    if (!log) return 0;
+    const configuredAmount = Number(state.settings.weeklyPayrollAmount) || 0;
+    if (configuredAmount > 0) return configuredAmount;
+    const storedAmount = Number(log.amount) || 0;
+    return storedAmount > 0 ? storedAmount : getConfiguredWorkAmount(employee);
 };
 
 // --- Utilities ---
@@ -49,11 +118,25 @@ const getMonday = (d) => {
 const formatDate = (d) => d.toISOString().split('T')[0];
 const formatDisplayDate = (dateStr) => shortDateFormatter.format(new Date(dateStr));
 const formatWeekdayDate = (d) => weekdayFormatter.format(d);
+const formatDateTime = (dateStr) => dateStr ? dateTimeFormatter.format(new Date(dateStr)) : 'Not yet saved';
 
 const saveState = () => {
-    localStorage.setItem('payflow_employees', JSON.stringify(state.employees));
-    localStorage.setItem('payflow_settings', JSON.stringify(state.settings));
+    localStorage.setItem(STORAGE_KEYS.employees, JSON.stringify(state.employees));
+    localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(state.settings));
     app.render();
+};
+
+const saveSessionState = () => {
+    localStorage.setItem(STORAGE_KEYS.isLoggedIn, state.isLoggedIn ? '1' : '0');
+    if (state.currentAdminId) {
+        localStorage.setItem(STORAGE_KEYS.currentAdminId, state.currentAdminId);
+    } else {
+        localStorage.removeItem(STORAGE_KEYS.currentAdminId);
+    }
+};
+
+const saveAdminState = () => {
+    localStorage.setItem(STORAGE_KEYS.admins, JSON.stringify(state.admins));
 };
 
 const formatCurrency = (amount) => currencyFormatter.format(Number(amount) || 0);
@@ -68,6 +151,21 @@ const getWeekNumber = (d) => {
 const createEmptyState = (message, colspan = 4) =>
     `<tr><td colspan="${colspan}" class="empty-state">${message}</td></tr>`;
 
+const getCurrentWeekLogsTotal = () => {
+    const now = new Date();
+    const currentWeek = getWeekNumber(now);
+    const currentYear = now.getFullYear();
+
+    return state.employees.reduce((sum, emp) => {
+        const empWeekTotal = emp.workLogs.reduce((empSum, log) => {
+            const logDate = new Date(log.date);
+            const sameWeek = getWeekNumber(logDate) === currentWeek && logDate.getFullYear() === currentYear;
+            return sameWeek ? empSum + getEffectiveLogAmount(emp, log) : empSum;
+        }, 0);
+        return sum + empWeekTotal;
+    }, 0);
+};
+
 const getPageSubtitle = (viewId) => {
     const totalEmployees = state.employees.length;
     const totalLogs = state.employees.reduce((sum, emp) => sum + emp.workLogs.length, 0);
@@ -76,7 +174,7 @@ const getPageSubtitle = (viewId) => {
     if (viewId === 'employees') return `${totalEmployees} employee${totalEmployees === 1 ? '' : 's'} in the system.`;
     if (viewId === 'payroll') return 'Summary of total earnings by employee.';
     if (viewId === 'weekly') return 'Manage daily attendance and nature-of-work records.';
-    if (viewId === 'settings') return 'Update weekly payroll and profile information.';
+    if (viewId === 'settings') return 'Update work day amount and profile information.';
     if (viewId === 'details') return `${totalLogs} total work log${totalLogs === 1 ? '' : 's'} recorded.`;
     return '';
 };
@@ -90,17 +188,207 @@ const app = {
     },
 
     loadInitialData: async () => {
-        const local = JSON.parse(localStorage.getItem('payflow_employees') || '[]');
-        const localSettings = JSON.parse(localStorage.getItem('payflow_settings') || '{}');
+        const local = JSON.parse(localStorage.getItem(STORAGE_KEYS.employees) || '[]');
+        const localSettings = JSON.parse(localStorage.getItem(STORAGE_KEYS.settings) || '{}');
+        const localAdmins = JSON.parse(localStorage.getItem(STORAGE_KEYS.admins) || '[]');
+        const storedLoginState = localStorage.getItem(STORAGE_KEYS.isLoggedIn);
+        const storedCurrentAdminId = localStorage.getItem(STORAGE_KEYS.currentAdminId);
 
         state.employees = Array.isArray(local) ? local : [];
         if (localSettings && typeof localSettings === 'object') {
             state.settings = { ...state.settings, ...localSettings };
         }
+        state.admins = Array.isArray(localAdmins)
+            ? localAdmins
+                .filter(item => item && typeof item === 'object' && item.id && item.username)
+                .map(item => ({
+                    id: item.id,
+                    name: (item.name || 'Admin User').toString().trim() || 'Admin User',
+                    role: (item.role || 'Administrator').toString().trim() || 'Administrator',
+                    username: item.username.toString().trim(),
+                    password: (item.password || '').toString(),
+                    createdAt: item.createdAt || new Date().toISOString()
+                }))
+            : [];
 
         state.settings.weeklyPayrollAmount = Math.max(0, Number(state.settings.weeklyPayrollAmount) || 0);
         state.settings.profileName = (state.settings.profileName || 'Admin User').toString().trim() || 'Admin User';
         state.settings.profileRole = (state.settings.profileRole || 'Administrator').toString().trim() || 'Administrator';
+        const updatedAt = state.settings.lastUpdatedAt ? new Date(state.settings.lastUpdatedAt) : null;
+        state.settings.lastUpdatedAt = updatedAt && !Number.isNaN(updatedAt.getTime()) ? updatedAt.toISOString() : null;
+
+        const hasAdmins = state.admins.length > 0;
+        const activeAdmin = state.admins.find(admin => admin.id === storedCurrentAdminId) || null;
+        const shouldRestoreSession = storedLoginState === '1' && Boolean(activeAdmin);
+
+        if (shouldRestoreSession && activeAdmin) {
+            state.isLoggedIn = true;
+            state.currentAdminId = activeAdmin.id;
+            state.authView = 'login';
+            state.authNotice.message = '';
+            state.authNotice.type = 'info';
+            app.syncActiveAdminProfile();
+        } else {
+            state.isLoggedIn = false;
+            state.currentAdminId = null;
+            state.authView = 'login';
+            state.authNotice.message = '';
+            state.authNotice.type = 'info';
+        }
+
+        saveSessionState();
+    },
+
+    getCurrentAdmin: () => {
+        if (!state.currentAdminId) return null;
+        return state.admins.find(admin => admin.id === state.currentAdminId) || null;
+    },
+
+    syncActiveAdminProfile: () => {
+        const activeAdmin = app.getCurrentAdmin();
+        if (!activeAdmin) return;
+        state.settings.profileName = (activeAdmin.name || 'Admin User').toString().trim() || 'Admin User';
+        state.settings.profileRole = (activeAdmin.role || 'Administrator').toString().trim() || 'Administrator';
+    },
+
+    setAuthNotice: (message, type = 'info') => {
+        state.authNotice.message = message || '';
+        state.authNotice.type = type;
+
+        const noticeEl = document.getElementById('auth-notice');
+        if (!noticeEl) return;
+
+        noticeEl.innerText = state.authNotice.message;
+        noticeEl.classList.toggle('show', Boolean(state.authNotice.message));
+        noticeEl.classList.toggle('error', type === 'error');
+        noticeEl.classList.toggle('info', type !== 'error');
+    },
+
+    showAuthView: (viewId) => {
+        const fallbackView = 'login';
+        const nextView = viewId === 'register' || viewId === 'login' ? viewId : fallbackView;
+        state.authView = nextView;
+        if (state.authView === 'register') {
+            app.setAuthNotice('', 'info');
+        } else {
+            app.setAuthNotice('', 'info');
+        }
+        app.renderAuth();
+    },
+
+    renderAuth: () => {
+        const authGateEl = document.getElementById('auth-gate');
+        const loginCardEl = document.getElementById('auth-login-card');
+        const registerCardEl = document.getElementById('auth-register-card');
+        const activeAuthView = state.authView === 'register' ? 'register' : 'login';
+        state.authView = activeAuthView;
+
+        document.body.classList.toggle('auth-mode', !state.isLoggedIn);
+
+        if (authGateEl) authGateEl.classList.toggle('active', !state.isLoggedIn);
+        if (loginCardEl) loginCardEl.classList.toggle('active', activeAuthView === 'login');
+        if (registerCardEl) registerCardEl.classList.toggle('active', activeAuthView === 'register');
+        app.setAuthNotice(state.authNotice.message, state.authNotice.type);
+    },
+
+    handleLogin: (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const username = form.username.value.trim();
+        const password = form.password.value;
+        app.setAuthNotice('', 'info');
+
+        if (state.admins.length === 0) {
+            app.setAuthNotice('No admin account found. Please register first.', 'error');
+            app.toast('No registered admin account yet.');
+            return;
+        }
+
+        const matchedAdmin = state.admins.find(admin =>
+            admin.username.toLowerCase() === username.toLowerCase()
+        );
+
+        if (!matchedAdmin || matchedAdmin.password !== password) {
+            app.setAuthNotice('Invalid username or password. Please try again.', 'error');
+            app.toast('Invalid username or password.');
+            return;
+        }
+
+        state.currentAdminId = matchedAdmin.id;
+        state.isLoggedIn = true;
+        state.authView = 'login';
+        app.setAuthNotice('', 'info');
+        app.syncActiveAdminProfile();
+        saveSessionState();
+        form.reset();
+        saveState();
+        app.navigate('dashboard');
+        app.toast(`Welcome back, ${matchedAdmin.name}!`);
+    },
+
+    handleRegister: (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const name = form.name.value.trim();
+        const role = 'Administrator';
+        const username = form.username.value.trim();
+        const password = form.password.value;
+        const confirmPassword = form['confirm-password'].value;
+        app.setAuthNotice('', 'info');
+
+        if (!name || !username || !password) {
+            app.setAuthNotice('Complete all required fields.', 'error');
+            app.toast('Complete all required fields.');
+            return;
+        }
+
+        if (password.length < 6) {
+            app.setAuthNotice('Password must be at least 6 characters.', 'error');
+            app.toast('Password must be at least 6 characters.');
+            return;
+        }
+
+        if (password !== confirmPassword) {
+            app.setAuthNotice('Passwords do not match.', 'error');
+            app.toast('Passwords do not match.');
+            return;
+        }
+
+        const usernameTaken = state.admins.some(admin =>
+            admin.username.toLowerCase() === username.toLowerCase()
+        );
+
+        if (usernameTaken) {
+            app.setAuthNotice('Username already exists. Choose another one.', 'error');
+            app.toast('Username already exists.');
+            return;
+        }
+
+        const newAdmin = {
+            id: generateId(),
+            name,
+            role,
+            username,
+            password,
+            createdAt: new Date().toISOString()
+        };
+
+        state.admins.push(newAdmin);
+        saveAdminState();
+
+        state.currentAdminId = newAdmin.id;
+        state.isLoggedIn = true;
+        state.authView = 'login';
+        app.setAuthNotice('', 'info');
+        state.settings.profileName = newAdmin.name;
+        state.settings.profileRole = newAdmin.role;
+        state.settings.lastUpdatedAt = new Date().toISOString();
+
+        saveSessionState();
+        form.reset();
+        saveState();
+        app.navigate('dashboard');
+        app.toast(`Welcome, ${newAdmin.name}! Your admin account is ready.`);
     },
 
     updatePageContext: (viewId) => {
@@ -120,39 +408,41 @@ const app = {
     },
 
     navigate: (viewId) => {
-        state.currentView = viewId;
+        if (!state.isLoggedIn) return;
+        const targetView = viewId;
+        state.currentView = targetView;
 
         document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
-        const viewEl = document.getElementById(`view-${viewId === 'details' ? 'details' : viewId}`);
+        const viewEl = document.getElementById(`view-${targetView === 'details' ? 'details' : targetView}`);
         if (viewEl) viewEl.classList.add('active');
 
         document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-        if (viewId !== 'details') {
-            document.querySelectorAll(`button[onclick="app.navigate('${viewId}')"], button[onclick="app.navigateMobile('${viewId}')"]`)
+        if (targetView !== 'details') {
+            document.querySelectorAll(`button[onclick="app.navigate('${targetView}')"], button[onclick="app.navigateMobile('${targetView}')"]`)
                 .forEach(btn => btn.classList.add('active'));
         }
 
-        if (viewId === 'dashboard') {
+        if (targetView === 'dashboard') {
             document.getElementById('page-title').innerText = 'Dashboard';
             app.renderDashboard();
-        } else if (viewId === 'employees') {
+        } else if (targetView === 'employees') {
             document.getElementById('page-title').innerText = 'Employees';
             app.renderEmployeeList();
-        } else if (viewId === 'payroll') {
+        } else if (targetView === 'payroll') {
             document.getElementById('page-title').innerText = 'Payroll Summary';
             app.renderPayroll();
-        } else if (viewId === 'weekly') {
+        } else if (targetView === 'weekly') {
             document.getElementById('page-title').innerText = 'Work Week DTR';
             app.renderWeeklyWork();
-        } else if (viewId === 'settings') {
+        } else if (targetView === 'settings') {
             document.getElementById('page-title').innerText = 'Settings';
             app.renderSettings();
-        } else if (viewId === 'details') {
+        } else if (targetView === 'details') {
             document.getElementById('page-title').innerText = 'Employee Details';
             app.renderEmployeeDetails(state.selectedEmployeeId);
         }
 
-        app.updatePageContext(viewId);
+        app.updatePageContext(targetView);
     },
 
     navigateMobile: (viewId) => {
@@ -174,17 +464,72 @@ const app = {
     },
 
     // --- Actions ---
-    handleSaveSettings: (e) => {
-        e.preventDefault();
-        const form = e.target;
+    setSettingsFieldMode: (fieldName, isEditing) => {
+        const config = SETTINGS_FIELD_CONFIG[fieldName];
+        if (!config) return;
 
-        state.settings.weeklyPayrollAmount = Math.max(0, parseFloat(form['weekly-payroll'].value) || 0);
-        state.settings.profileName = form['profile-name'].value.trim() || 'Admin User';
-        state.settings.profileRole = form['profile-role'].value.trim() || 'Administrator';
+        const input = document.getElementById(config.inputId);
+        const editBtn = document.getElementById(config.editBtnId);
+        const updateBtn = document.getElementById(config.updateBtnId);
 
+        if (input) input.disabled = !isEditing;
+        if (editBtn) editBtn.disabled = isEditing;
+        if (updateBtn) updateBtn.disabled = !isEditing;
+
+        if (isEditing && input) {
+            input.focus();
+            if (typeof input.select === 'function') input.select();
+        }
+    },
+
+    enableSettingsField: (fieldName) => {
+        app.setSettingsFieldMode(fieldName, true);
+    },
+
+    updateSettingsField: (fieldName) => {
+        const config = SETTINGS_FIELD_CONFIG[fieldName];
+        if (!config) return;
+
+        const input = document.getElementById(config.inputId);
+        if (!input) return;
+
+        const nextValue = config.normalize(input.value);
+        state.settings[config.stateKey] = nextValue;
+
+        if (config.adminKey && state.currentAdminId) {
+            const activeAdmin = app.getCurrentAdmin();
+            if (activeAdmin) {
+                activeAdmin[config.adminKey] = nextValue;
+                saveAdminState();
+            }
+        }
+
+        state.settings.lastUpdatedAt = new Date().toISOString();
         saveState();
-        app.toast('Settings saved.');
-        app.navigate('settings');
+        app.toast(`${config.label} updated.`);
+    },
+
+    resetSettingsForm: () => {
+        app.renderSettings();
+        app.toast('Settings form reset.');
+    },
+
+    logout: () => {
+        if (!state.isLoggedIn) return;
+        if (!confirm('Log out of this payroll session?')) return;
+        state.isLoggedIn = false;
+        state.currentAdminId = null;
+        state.authView = 'login';
+        state.authNotice.type = 'info';
+        saveSessionState();
+        const offcanvasEl = document.getElementById('mobileNav');
+        if (offcanvasEl && window.bootstrap && bootstrap.Offcanvas) {
+            bootstrap.Offcanvas.getOrCreateInstance(offcanvasEl).hide();
+        }
+        const loginForm = document.querySelector('#auth-login-card form');
+        if (loginForm) loginForm.reset();
+        app.renderAuth();
+        app.toast('You have been successfully logged out.');
     },
 
     handleAddEmployee: (e) => {
@@ -225,7 +570,7 @@ const app = {
             id: generateId(),
             date: form.date.value,
             description: form.description.value.trim(),
-            amount: state.FIXED_DAILY_RATE
+            amount: getConfiguredWorkAmount(employee)
         };
         employee.workLogs.push(newLog);
         employee.workLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -324,7 +669,7 @@ const app = {
         const employee = state.employees.find(emp => emp.id === empId);
         if (!employee) return;
 
-        const rate = Number(employee.dailyRate) > 0 ? Number(employee.dailyRate) : state.FIXED_DAILY_RATE;
+        const rate = getConfiguredWorkAmount(employee);
         const desc = `Work: ${selectedNature.sort().join(', ')}`;
         const existingLog = employee.workLogs.find(log => log.date === dateStr);
 
@@ -374,13 +719,13 @@ const app = {
             const desc = `Work: ${workTypes.join(', ')}`;
             if (log) {
                 log.description = desc;
-                log.amount = state.FIXED_DAILY_RATE;
+                log.amount = getConfiguredWorkAmount(employee);
             } else {
                 employee.workLogs.push({
                     id: generateId(),
                     date: dateStr,
                     description: desc,
-                    amount: state.FIXED_DAILY_RATE
+                    amount: getConfiguredWorkAmount(employee)
                 });
             }
         }
@@ -391,7 +736,10 @@ const app = {
     // --- Rendering ---
     render: () => {
         app.renderProfile();
-        app.navigate(state.currentView);
+        app.renderAuth();
+        if (state.isLoggedIn) {
+            app.navigate(state.currentView);
+        }
 
         window.onclick = (event) => {
             if (!event.target.closest('.dropdown-wrapper')) {
@@ -402,24 +750,18 @@ const app = {
 
     renderDashboard: () => {
         const totalEmployees = state.employees.length;
-        let weeklyPayroll = 0;
-        const now = new Date();
-        const currentWeek = getWeekNumber(now);
-        const currentYear = now.getFullYear();
+        const weeklyPayroll = getCurrentWeekLogsTotal();
         const recentLogs = [];
 
         state.employees.forEach(emp => {
             emp.workLogs.forEach(log => {
-                const logDate = new Date(log.date);
-                if (getWeekNumber(logDate) === currentWeek && logDate.getFullYear() === currentYear) weeklyPayroll += Number(log.amount) || 0;
-                recentLogs.push({ empName: emp.name, ...log });
+                recentLogs.push({ empName: emp.name, ...log, amount: getEffectiveLogAmount(emp, log) });
             });
         });
 
         recentLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
         const top5 = recentLogs.slice(0, 5);
-        const configuredWeeklyPayroll = Number(state.settings.weeklyPayrollAmount) || 0;
-        const weeklyValueToDisplay = configuredWeeklyPayroll > 0 ? configuredWeeklyPayroll : weeklyPayroll;
+        const weeklyValueToDisplay = weeklyPayroll;
         const monthlyValueToDisplay = weeklyValueToDisplay * 4;
 
         document.getElementById('dash-total-employees').innerText = totalEmployees;
@@ -456,10 +798,25 @@ const app = {
         const weeklyPayrollInput = document.getElementById('settings-weekly-payroll');
         const profileNameInput = document.getElementById('settings-profile-name');
         const profileRoleInput = document.getElementById('settings-profile-role');
+        const currentWeekTotalEl = document.getElementById('settings-current-week-total');
+        const totalEmployeesEl = document.getElementById('settings-total-employees');
+        const totalLogsEl = document.getElementById('settings-total-logs');
+        const lastUpdatedEl = document.getElementById('settings-last-updated');
 
         if (weeklyPayrollInput) weeklyPayrollInput.value = Number(state.settings.weeklyPayrollAmount || 0);
         if (profileNameInput) profileNameInput.value = state.settings.profileName;
         if (profileRoleInput) profileRoleInput.value = state.settings.profileRole;
+        if (currentWeekTotalEl) currentWeekTotalEl.innerText = formatCurrency(getCurrentWeekLogsTotal());
+        if (totalEmployeesEl) totalEmployeesEl.innerText = String(state.employees.length);
+        if (totalLogsEl) {
+            const logCount = state.employees.reduce((sum, emp) => sum + emp.workLogs.length, 0);
+            totalLogsEl.innerText = String(logCount);
+        }
+        if (lastUpdatedEl) lastUpdatedEl.innerText = formatDateTime(state.settings.lastUpdatedAt);
+
+        Object.keys(SETTINGS_FIELD_CONFIG).forEach((fieldName) => {
+            app.setSettingsFieldMode(fieldName, false);
+        });
     },
 
     renderEmployeeList: () => {
@@ -490,7 +847,7 @@ const app = {
                 if (!e.target.closest('.btn-delete')) app.viewEmployee(emp.id);
             };
 
-            const total = emp.workLogs.reduce((sum, log) => sum + (Number(log.amount) || 0), 0);
+            const total = emp.workLogs.reduce((sum, log) => sum + getEffectiveLogAmount(emp, log), 0);
 
             card.innerHTML = `
                 <div class="card-header">
@@ -522,7 +879,7 @@ const app = {
 
         let grandTotal = 0;
         state.employees.forEach(emp => {
-            const totalEarnings = emp.workLogs.reduce((sum, log) => sum + (Number(log.amount) || 0), 0);
+            const totalEarnings = emp.workLogs.reduce((sum, log) => sum + getEffectiveLogAmount(emp, log), 0);
             grandTotal += totalEarnings;
 
             const tr = document.createElement('tr');
@@ -601,7 +958,7 @@ const app = {
             currentDates.forEach(dayInfo => {
                 const td = document.createElement('td');
                 const log = emp.workLogs.find(item => item.date === dayInfo.dateStr);
-                if (log) weeklyTotal += Number(log.amount) || 0;
+                if (log) weeklyTotal += getEffectiveLogAmount(emp, log);
 
                 const natureText = log && log.description ? log.description.replace('Work: ', '') : 'Set nature';
                 td.innerHTML = `
@@ -634,9 +991,9 @@ const app = {
         document.getElementById('detail-role').innerText = emp.role;
         document.getElementById('detail-contact').innerText = `Contact: ${emp.contact || 'N/A'}`;
         document.getElementById('detail-address').innerText = `Address: ${emp.address || 'N/A'}`;
-        document.getElementById('detail-daily-rate').innerText = formatCurrency(emp.dailyRate);
+        document.getElementById('detail-daily-rate').innerText = formatCurrency(getConfiguredWorkAmount(emp));
 
-        const total = emp.workLogs.reduce((sum, log) => sum + (Number(log.amount) || 0), 0);
+        const total = emp.workLogs.reduce((sum, log) => sum + getEffectiveLogAmount(emp, log), 0);
         document.getElementById('detail-total-earnings').innerText = formatCurrency(total);
 
         const tbody = document.getElementById('employee-logs-body');
@@ -652,7 +1009,7 @@ const app = {
             tr.innerHTML = `
                 <td>${formatDisplayDate(log.date)}</td>
                 <td>${log.description}</td>
-                <td>${formatCurrency(log.amount)}</td>
+                <td>${formatCurrency(getEffectiveLogAmount(emp, log))}</td>
                 <td>
                     <button class="btn btn-delete" style="padding:0.35rem 0.55rem;" onclick="app.deleteWorkLog('${emp.id}', '${log.id}')">
                         <i class="fa-solid fa-trash"></i>
