@@ -963,8 +963,6 @@ const app = {
                 const natureText = log && log.description ? log.description.replace('Work: ', '') : 'Set nature';
                 td.innerHTML = `
                     <div style="display:flex; flex-direction:column; align-items:center; gap:0.35rem;">
-                        <input type="checkbox" ${log ? 'checked' : ''}
-                            onchange="app.setDTRStatus('${emp.id}', '${dayInfo.dateStr}', this.checked)">
                         <button class="btn btn-secondary" style="padding:0.25rem 0.45rem; font-size:0.72rem;"
                             onclick="app.openDTRModal('${emp.id}', '${dayInfo.dateStr}')">
                             ${natureText}
