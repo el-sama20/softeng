@@ -26,6 +26,11 @@ const state = {
     currentView: 'dashboard',
     selectedEmployeeId: null,
     currentWeekStart: null,
+    settings: {
+        weeklyPayrollAmount: 0,
+        profileName: 'Admin User',
+        profileRole: 'Administrator'
+    },
     FIXED_DAILY_RATE: 450,
     WORK_TYPES: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'],
     toastTimer: null
@@ -47,6 +52,7 @@ const formatWeekdayDate = (d) => weekdayFormatter.format(d);
 
 const saveState = () => {
     localStorage.setItem('payflow_employees', JSON.stringify(state.employees));
+    localStorage.setItem('payflow_settings', JSON.stringify(state.settings));
     app.render();
 };
 
@@ -70,6 +76,7 @@ const getPageSubtitle = (viewId) => {
     if (viewId === 'employees') return `${totalEmployees} employee${totalEmployees === 1 ? '' : 's'} in the system.`;
     if (viewId === 'payroll') return 'Summary of total earnings by employee.';
     if (viewId === 'weekly') return 'Manage daily attendance and nature-of-work records.';
+    if (viewId === 'settings') return 'Update weekly payroll and profile information.';
     if (viewId === 'details') return `${totalLogs} total work log${totalLogs === 1 ? '' : 's'} recorded.`;
     return '';
 };
@@ -84,7 +91,16 @@ const app = {
 
     loadInitialData: async () => {
         const local = JSON.parse(localStorage.getItem('payflow_employees') || '[]');
+        const localSettings = JSON.parse(localStorage.getItem('payflow_settings') || '{}');
+
         state.employees = Array.isArray(local) ? local : [];
+        if (localSettings && typeof localSettings === 'object') {
+            state.settings = { ...state.settings, ...localSettings };
+        }
+
+        state.settings.weeklyPayrollAmount = Math.max(0, Number(state.settings.weeklyPayrollAmount) || 0);
+        state.settings.profileName = (state.settings.profileName || 'Admin User').toString().trim() || 'Admin User';
+        state.settings.profileRole = (state.settings.profileRole || 'Administrator').toString().trim() || 'Administrator';
     },
 
     updatePageContext: (viewId) => {
@@ -128,6 +144,9 @@ const app = {
         } else if (viewId === 'weekly') {
             document.getElementById('page-title').innerText = 'Work Week DTR';
             app.renderWeeklyWork();
+        } else if (viewId === 'settings') {
+            document.getElementById('page-title').innerText = 'Settings';
+            app.renderSettings();
         } else if (viewId === 'details') {
             document.getElementById('page-title').innerText = 'Employee Details';
             app.renderEmployeeDetails(state.selectedEmployeeId);
@@ -155,6 +174,19 @@ const app = {
     },
 
     // --- Actions ---
+    handleSaveSettings: (e) => {
+        e.preventDefault();
+        const form = e.target;
+
+        state.settings.weeklyPayrollAmount = Math.max(0, parseFloat(form['weekly-payroll'].value) || 0);
+        state.settings.profileName = form['profile-name'].value.trim() || 'Admin User';
+        state.settings.profileRole = form['profile-role'].value.trim() || 'Administrator';
+
+        saveState();
+        app.toast('Settings saved.');
+        app.navigate('settings');
+    },
+
     handleAddEmployee: (e) => {
         e.preventDefault();
         const form = e.target;
@@ -358,6 +390,7 @@ const app = {
 
     // --- Rendering ---
     render: () => {
+        app.renderProfile();
         app.navigate(state.currentView);
 
         window.onclick = (event) => {
@@ -370,17 +403,14 @@ const app = {
     renderDashboard: () => {
         const totalEmployees = state.employees.length;
         let weeklyPayroll = 0;
-        let monthlyPayroll = 0;
         const now = new Date();
         const currentWeek = getWeekNumber(now);
-        const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
         const recentLogs = [];
 
         state.employees.forEach(emp => {
             emp.workLogs.forEach(log => {
                 const logDate = new Date(log.date);
-                if (logDate.getMonth() === currentMonth && logDate.getFullYear() === currentYear) monthlyPayroll += Number(log.amount) || 0;
                 if (getWeekNumber(logDate) === currentWeek && logDate.getFullYear() === currentYear) weeklyPayroll += Number(log.amount) || 0;
                 recentLogs.push({ empName: emp.name, ...log });
             });
@@ -388,10 +418,13 @@ const app = {
 
         recentLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
         const top5 = recentLogs.slice(0, 5);
+        const configuredWeeklyPayroll = Number(state.settings.weeklyPayrollAmount) || 0;
+        const weeklyValueToDisplay = configuredWeeklyPayroll > 0 ? configuredWeeklyPayroll : weeklyPayroll;
+        const monthlyValueToDisplay = weeklyValueToDisplay * 4;
 
         document.getElementById('dash-total-employees').innerText = totalEmployees;
-        document.getElementById('dash-weekly-payroll').innerText = formatCurrency(weeklyPayroll);
-        document.getElementById('dash-monthly-payroll').innerText = formatCurrency(monthlyPayroll);
+        document.getElementById('dash-weekly-payroll').innerText = formatCurrency(weeklyValueToDisplay);
+        document.getElementById('dash-monthly-payroll').innerText = formatCurrency(monthlyValueToDisplay);
 
         const tbody = document.getElementById('recent-logs-body');
         tbody.innerHTML = '';
@@ -410,6 +443,23 @@ const app = {
             `;
             tbody.appendChild(tr);
         });
+    },
+
+    renderProfile: () => {
+        const nameEl = document.getElementById('profile-name');
+        const roleEl = document.getElementById('profile-role');
+        if (nameEl) nameEl.innerText = state.settings.profileName;
+        if (roleEl) roleEl.innerText = state.settings.profileRole;
+    },
+
+    renderSettings: () => {
+        const weeklyPayrollInput = document.getElementById('settings-weekly-payroll');
+        const profileNameInput = document.getElementById('settings-profile-name');
+        const profileRoleInput = document.getElementById('settings-profile-role');
+
+        if (weeklyPayrollInput) weeklyPayrollInput.value = Number(state.settings.weeklyPayrollAmount || 0);
+        if (profileNameInput) profileNameInput.value = state.settings.profileName;
+        if (profileRoleInput) profileRoleInput.value = state.settings.profileRole;
     },
 
     renderEmployeeList: () => {

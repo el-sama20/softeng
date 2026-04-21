@@ -30,6 +30,9 @@
                 <button class="nav-item" onclick="app.navigate('weekly')">
                     <i class="fa-solid fa-calendar-check"></i> Work Week
                 </button>
+                <button class="nav-item" onclick="app.navigate('settings')">
+                    <i class="fa-solid fa-gear"></i> Settings
+                </button>
             </nav>
         </aside>
 
@@ -56,6 +59,9 @@
                     <button class="nav-item" onclick="app.navigateMobile('weekly')">
                         <i class="fa-solid fa-calendar-check"></i> Work Week
                     </button>
+                    <button class="nav-item" onclick="app.navigateMobile('settings')">
+                        <i class="fa-solid fa-gear"></i> Settings
+                    </button>
                 </nav>
             </div>
         </div>
@@ -72,7 +78,10 @@
                     </div>
                 </div>
                 <div class="user-profile">
-                    <span>Admin</span>
+                    <div class="profile-meta">
+                        <strong id="profile-name">Admin User</strong>
+                        <small id="profile-role">Administrator</small>
+                    </div>
                     <div class="avatar"><i class="fa-solid fa-user"></i></div>
                 </div>
             </header>
@@ -188,6 +197,28 @@
                         </thead>
                         <tbody id="payroll-table-body"></tbody>
                     </table>
+                </div>
+            </section>
+
+            <section id="view-settings" class="view">
+                <div class="settings-panel">
+                    <h2>Payroll and Profile Settings</h2>
+                    <p>Set the weekly payroll amount and update your profile details.</p>
+                    <form class="settings-form" onsubmit="app.handleSaveSettings(event)">
+                        <div class="form-group">
+                            <label for="settings-weekly-payroll">Weekly Payroll Amount (PHP)</label>
+                            <input id="settings-weekly-payroll" class="form-control" type="number" min="0" step="0.01" name="weekly-payroll" required placeholder="e.g. 15000.00">
+                        </div>
+                        <div class="form-group">
+                            <label for="settings-profile-name">Profile Name</label>
+                            <input id="settings-profile-name" class="form-control" type="text" name="profile-name" required placeholder="e.g. Maria Santos">
+                        </div>
+                        <div class="form-group">
+                            <label for="settings-profile-role">Profile Role</label>
+                            <input id="settings-profile-role" class="form-control" type="text" name="profile-role" required placeholder="e.g. Payroll Admin">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save Settings</button>
+                    </form>
                 </div>
             </section>
 

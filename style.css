@@ -146,9 +146,21 @@ body {
     gap: 0.55rem;
 }
 
-.user-profile span {
-    font-weight: 600;
-    font-size: 0.9rem;
+.profile-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.15;
+}
+
+.profile-meta strong {
+    font-size: 0.88rem;
+    font-weight: 700;
+}
+
+.profile-meta small {
+    font-size: 0.74rem;
+    color: var(--text-muted);
 }
 
 .avatar {
@@ -476,6 +488,30 @@ td {
     gap: 0.75rem;
 }
 
+.settings-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 1.2rem;
+    max-width: 620px;
+}
+
+.settings-panel h2 {
+    margin: 0;
+    font-size: 1.22rem;
+}
+
+.settings-panel p {
+    margin: 0.35rem 0 1rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.settings-form .btn {
+    margin-top: 0.35rem;
+}
+
 .modal {
     display: none;
     position: fixed;
@@ -745,7 +781,7 @@ td {
         padding: 0.72rem;
     }
 
-    .user-profile span {
+    .profile-meta {
         display: none;
     }
 
