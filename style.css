@@ -36,6 +36,10 @@
     font-family: 'Inter', sans-serif;
 }
 
+html {
+    height: 100%;
+}
+
 body {
     background: radial-gradient(circle at top right, #d7f0ed, transparent 42%), var(--bg-body);
     color: var(--text-main);
@@ -280,7 +284,8 @@ body.auth-mode .app-container {
 
 .app-container {
     display: flex;
-    min-height: 100%;
+    height: 100vh;
+    min-height: 0;
 }
 
 .sidebar {
@@ -344,10 +349,14 @@ body.auth-mode .app-container {
 .main-content {
     flex: 1;
     min-width: 0;
+    min-height: 0;
+    height: 100vh;
     max-width: 1450px;
     margin: 0 auto;
-    padding: 1.8rem;
+    padding: 1.8rem 1.8rem 3rem;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
     display: flex;
     flex-direction: column;
     gap: 1.3rem;
@@ -557,27 +566,21 @@ body.auth-mode .app-container {
     font-size: 0.72rem;
 }
 
-.payroll-summary-toolbar {
-    margin-top: 1rem;
+.payroll-overview-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 0.9rem;
+    gap: 1rem;
     flex-wrap: wrap;
-    background: linear-gradient(135deg, #f8fbfa 0%, #eef8f6 100%);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-sm);
-    padding: 0.85rem 1rem;
 }
 
-.payroll-summary-toolbar p {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: 0.9rem;
+.payroll-grand-card {
+    width: 100%;
+    max-width: 400px;
 }
 
 .payroll-export-btn {
+    margin-left: auto;
     white-space: nowrap;
 }
 
@@ -631,6 +634,160 @@ body.auth-mode .app-container {
 .payroll-period-metrics small {
     color: var(--text-muted);
     font-size: 0.78rem;
+}
+
+.payroll-history-panel {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.86);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+}
+
+.payroll-history-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+.payroll-history-head::-webkit-details-marker {
+    display: none;
+}
+
+.payroll-history-panel[open] .payroll-history-head {
+    margin-bottom: 0.9rem;
+}
+
+.payroll-history-head h2 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 1.1rem;
+}
+
+.payroll-history-head p {
+    margin: 0.25rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+}
+
+.payroll-history-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(120px, auto));
+    gap: 0.65rem;
+    margin-left: auto;
+}
+
+.payroll-history-summary div {
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #dceae7;
+    border-radius: 14px;
+    background: #f8fbfa;
+}
+
+.payroll-history-summary span {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 750;
+}
+
+.payroll-history-summary strong {
+    display: block;
+    margin-top: 0.12rem;
+    color: var(--primary-dark);
+    font-size: 0.98rem;
+    white-space: nowrap;
+}
+
+.payroll-history-filter {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 130px;
+}
+
+.payroll-history-filter label {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 750;
+}
+
+.payroll-history-filter .filter-select {
+    min-width: 130px;
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+    border-radius: 14px;
+}
+
+.payroll-history-toggle {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    background: #edf7f5;
+    color: var(--primary-dark);
+    transition: transform 0.18s, background-color 0.18s;
+}
+
+.payroll-history-head:hover .payroll-history-toggle {
+    background: #d9f0ec;
+}
+
+.payroll-history-panel[open] .payroll-history-toggle {
+    transform: rotate(180deg);
+}
+
+.payroll-history-table {
+    margin-top: 0.25rem;
+}
+
+.payroll-history-table td:last-child {
+    color: var(--success);
+    font-weight: 800;
+}
+
+.history-period-cell {
+    display: grid;
+    gap: 0.18rem;
+}
+
+.history-period-cell strong {
+    color: #0f172a;
+}
+
+.history-period-cell small {
+    color: var(--text-muted);
+}
+
+.payroll-employee-panel {
+    margin-top: 1rem;
+}
+
+.payroll-employee-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.payroll-employee-head h2 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 1.1rem;
+}
+
+.payroll-employee-head p {
+    max-width: 520px;
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.86rem;
+    text-align: right;
 }
 
 .weekly-command-center {
@@ -1625,6 +1782,7 @@ td {
 
     .app-container {
         display: block;
+        height: auto;
         min-height: 100vh;
     }
 
@@ -1646,6 +1804,8 @@ td {
     }
 
     .main-content {
+        height: auto;
+        min-height: 100vh;
         padding: 0.9rem;
         gap: 1rem;
     }
@@ -1716,9 +1876,11 @@ td {
         padding: 0.22rem;
     }
 
-    .payroll-summary-toolbar,
+    .payroll-overview-row,
+    .payroll-grand-card,
+    .payroll-export-btn,
     .payroll-period-panel,
-    .payroll-summary-toolbar .btn {
+    .payroll-period-panel .btn {
         width: 100%;
     }
 
@@ -1731,7 +1893,37 @@ td {
         justify-items: start;
     }
 
-    .payroll-summary-toolbar .btn,
+    .payroll-history-head {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .payroll-history-summary {
+        grid-template-columns: 1fr;
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .payroll-history-filter,
+    .payroll-history-filter .filter-select {
+        width: 100%;
+    }
+
+    .payroll-history-table th,
+    .payroll-history-table td {
+        white-space: nowrap;
+    }
+
+    .payroll-employee-head {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .payroll-employee-head p {
+        max-width: none;
+        text-align: left;
+    }
+
     .payroll-period-panel .btn {
         width: 100%;
         justify-content: center;

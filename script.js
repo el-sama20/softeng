@@ -1378,6 +1378,82 @@ const app = {
         };
     },
 
+    getPayrollHistory: () => state.payrollPeriods
+        .filter(period => period.status === 'reimbursed')
+        .map(period => {
+            const start = parseDateInputValue(period.startDate);
+            const end = parseDateInputValue(period.endDate);
+            return {
+                ...period,
+                label: start && end ? formatWeekRangeLabel(start, end) : `${period.startDate} - ${period.endDate}`,
+                totalAmount: Number(period.totalAmount) || 0,
+                logCount: Number(period.logCount) || 0
+            };
+        })
+        .sort((a, b) => {
+            const dateA = new Date(a.reimbursedAt || a.salaryDate || a.endDate || 0);
+            const dateB = new Date(b.reimbursedAt || b.salaryDate || b.endDate || 0);
+            return dateB - dateA;
+        }),
+
+    getMonthlyPayrollHistory: (weeklyHistory = app.getPayrollHistory()) => {
+        const groups = new Map();
+
+        weeklyHistory.forEach(period => {
+            const basisDate = parseDateInputValue(period.salaryDate || period.endDate || period.startDate);
+            if (!basisDate) return;
+
+            const key = `${basisDate.getFullYear()}-${String(basisDate.getMonth() + 1).padStart(2, '0')}`;
+            const periodStart = parseDateInputValue(period.startDate);
+            const periodEnd = parseDateInputValue(period.endDate);
+            const reimbursedAt = period.reimbursedAt ? new Date(period.reimbursedAt) : null;
+
+            if (!groups.has(key)) {
+                groups.set(key, {
+                    key,
+                    monthStart: new Date(basisDate.getFullYear(), basisDate.getMonth(), 1),
+                    totalAmount: 0,
+                    logCount: 0,
+                    periodCount: 0,
+                    earliestStart: periodStart,
+                    latestEnd: periodEnd,
+                    latestReimbursedAt: reimbursedAt,
+                    admins: new Set()
+                });
+            }
+
+            const group = groups.get(key);
+            group.totalAmount += Number(period.totalAmount) || 0;
+            group.logCount += Number(period.logCount) || 0;
+            group.periodCount += 1;
+            if (period.reimbursedBy) group.admins.add(period.reimbursedBy);
+            if (periodStart && (!group.earliestStart || periodStart < group.earliestStart)) group.earliestStart = periodStart;
+            if (periodEnd && (!group.latestEnd || periodEnd > group.latestEnd)) group.latestEnd = periodEnd;
+            if (reimbursedAt && (!group.latestReimbursedAt || reimbursedAt > group.latestReimbursedAt)) group.latestReimbursedAt = reimbursedAt;
+        });
+
+        return Array.from(groups.values())
+            .map(group => {
+                const admins = Array.from(group.admins);
+                const coveredRange = group.earliestStart && group.latestEnd
+                    ? `${shortDateFormatter.format(group.earliestStart)} - ${shortDateFormatter.format(group.latestEnd)}`
+                    : 'No covered dates';
+
+                return {
+                    type: 'monthly',
+                    label: monthFormatter.format(group.monthStart),
+                    coveredRange,
+                    totalAmount: group.totalAmount,
+                    logCount: group.logCount,
+                    periodCount: group.periodCount,
+                    reimbursedBy: admins.length <= 1 ? (admins[0] || 'Admin') : `${admins.length} admins`,
+                    latestReimbursedAt: group.latestReimbursedAt ? group.latestReimbursedAt.toISOString() : null,
+                    sortDate: group.monthStart
+                };
+            })
+            .sort((a, b) => b.sortDate - a.sortDate);
+    },
+
     exportPayrollPDF: () => {
         const { rows, grandTotal, totalDays } = app.getPayrollSummary();
         const periodSummary = app.getCurrentPayrollPeriodSummary();
@@ -1610,6 +1686,86 @@ const app = {
         }
     },
 
+    renderPayrollHistory: () => {
+        const weeklyHistory = app.getPayrollHistory();
+        const filterEl = document.getElementById('payroll-history-filter');
+        const headerRow = document.getElementById('payroll-history-header-row');
+        const historyMode = filterEl && filterEl.value === 'monthly' ? 'monthly' : 'weekly';
+        const history = historyMode === 'monthly'
+            ? app.getMonthlyPayrollHistory(weeklyHistory)
+            : weeklyHistory;
+        const tbody = document.getElementById('payroll-history-body');
+        const totalEl = document.getElementById('payroll-history-total');
+        const countEl = document.getElementById('payroll-history-count');
+        const countLabelEl = document.getElementById('payroll-history-count-label');
+        const historyTotal = history.reduce((sum, period) => sum + period.totalAmount, 0);
+
+        if (totalEl) totalEl.innerText = formatCurrency(historyTotal);
+        if (countEl) countEl.innerText = String(history.length);
+        if (countLabelEl) countLabelEl.innerText = historyMode === 'monthly' ? 'Months' : 'Periods';
+        if (headerRow) {
+            headerRow.innerHTML = historyMode === 'monthly'
+                ? `
+                    <th>Payroll Month</th>
+                    <th>Covered Dates</th>
+                    <th>Released By</th>
+                    <th>Work Logs</th>
+                    <th>Total</th>
+                `
+                : `
+                    <th>Payroll Period</th>
+                    <th>Salary Day</th>
+                    <th>Reimbursed By</th>
+                    <th>Work Logs</th>
+                    <th>Total</th>
+                `;
+        }
+        if (!tbody) return;
+
+        if (history.length === 0) {
+            tbody.innerHTML = createEmptyState(
+                historyMode === 'monthly'
+                    ? 'No monthly history yet. Reimbursed weekly payrolls will be grouped by month here.'
+                    : 'No reimbursed payroll history yet. Mark a Friday payroll as reimbursed to save it here.',
+                5
+            );
+            return;
+        }
+
+        tbody.innerHTML = '';
+        history.forEach(period => {
+            const tr = document.createElement('tr');
+            if (historyMode === 'monthly') {
+                tr.innerHTML = `
+                    <td>
+                        <div class="history-period-cell">
+                            <strong>${escapeHTML(period.label)}</strong>
+                            <small>${period.periodCount} reimbursed week${period.periodCount === 1 ? '' : 's'}</small>
+                        </div>
+                    </td>
+                    <td>${escapeHTML(period.coveredRange)}</td>
+                    <td>${escapeHTML(period.reimbursedBy)}</td>
+                    <td>${period.logCount} log${period.logCount === 1 ? '' : 's'}</td>
+                    <td>${escapeHTML(formatCurrency(period.totalAmount))}</td>
+                `;
+            } else {
+                tr.innerHTML = `
+                    <td>
+                        <div class="history-period-cell">
+                            <strong>${escapeHTML(period.label)}</strong>
+                            <small>${period.reimbursedAt ? `Reimbursed ${escapeHTML(formatDateTime(period.reimbursedAt))}` : 'Reimbursed'}</small>
+                        </div>
+                    </td>
+                    <td>${escapeHTML(formatDisplayDate(period.salaryDate || period.endDate))}</td>
+                    <td>${escapeHTML(period.reimbursedBy || 'Admin')}</td>
+                    <td>${period.logCount} log${period.logCount === 1 ? '' : 's'}</td>
+                    <td>${escapeHTML(formatCurrency(period.totalAmount))}</td>
+                `;
+            }
+            tbody.appendChild(tr);
+        });
+    },
+
     renderPayroll: () => {
         const tbody = document.getElementById('payroll-table-body');
         tbody.innerHTML = '';
@@ -1632,6 +1788,7 @@ const app = {
 
         document.getElementById('payroll-grand-total').innerText = formatCurrency(grandTotal);
         app.renderCurrentPayrollPeriod();
+        app.renderPayrollHistory();
     },
 
     toggleDropdown: (id, event) => {

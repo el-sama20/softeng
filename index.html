@@ -333,14 +333,17 @@
             </section>
 
             <section id="view-payroll" class="view">
-                <div class="stats-grid">
-                    <div class="stat-card" style="width: 100%; max-width: 400px;">
+                <div class="payroll-overview-row">
+                    <div class="stat-card payroll-grand-card">
                         <div class="stat-icon bg-green"><i class="fa-solid fa-sack-dollar"></i></div>
                         <div class="stat-info">
                             <h3>Grand Total Payroll</h3>
                             <p id="payroll-grand-total">PHP 0.00</p>
                         </div>
                     </div>
+                    <button type="button" class="btn btn-primary payroll-export-btn" onclick="app.exportPayrollPDF()">
+                        <i class="fa-solid fa-file-pdf"></i> Export Total PDF
+                    </button>
                 </div>
                 <div class="payroll-period-panel">
                     <div class="payroll-period-main">
@@ -357,25 +360,72 @@
                         <i class="fa-solid fa-circle-check"></i> Mark as Reimbursed
                     </button>
                 </div>
-                <div class="payroll-summary-toolbar">
-                    <p>Export the employee totals and grand total as a printable PDF report.</p>
-                    <button type="button" class="btn btn-primary payroll-export-btn" onclick="app.exportPayrollPDF()">
-                        <i class="fa-solid fa-file-pdf"></i> Export Total PDF
-                    </button>
-                </div>
 
-                <div class="table-container" style="margin-top: 2rem;">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Employee Name</th>
-                                <th>Role</th>
-                                <th>Days Worked</th>
-                                <th>Total Earnings</th>
-                            </tr>
-                        </thead>
-                        <tbody id="payroll-table-body"></tbody>
-                    </table>
+                <details id="payroll-history-details" class="payroll-history-panel">
+                    <summary class="payroll-history-head">
+                        <div>
+                            <span class="panel-eyebrow">Payroll History</span>
+                            <h2>Reimbursed Payroll Periods</h2>
+                            <p>Click to view completed salary releases saved separately from the current payroll.</p>
+                        </div>
+                        <div class="payroll-history-summary">
+                            <div>
+                                <span>History Total</span>
+                                <strong id="payroll-history-total">PHP 0.00</strong>
+                            </div>
+                            <div>
+                                <span id="payroll-history-count-label">Periods</span>
+                                <strong id="payroll-history-count">0</strong>
+                            </div>
+                        </div>
+                        <div class="payroll-history-filter" onclick="event.stopPropagation()">
+                            <label for="payroll-history-filter">View</label>
+                            <select id="payroll-history-filter" class="filter-select" onchange="app.renderPayrollHistory()" aria-label="Filter payroll history">
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                            </select>
+                        </div>
+                        <span class="payroll-history-toggle" aria-hidden="true">
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </span>
+                    </summary>
+                    <div class="table-container payroll-history-table">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead>
+                                <tr id="payroll-history-header-row">
+                                    <th>Payroll Period</th>
+                                    <th>Salary Day</th>
+                                    <th>Reimbursed By</th>
+                                    <th>Work Logs</th>
+                                    <th>Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="payroll-history-body"></tbody>
+                        </table>
+                    </div>
+                </details>
+
+                <div class="payroll-employee-panel">
+                    <div class="payroll-employee-head">
+                        <div>
+                            <span class="panel-eyebrow">Employee Totals</span>
+                            <h2>Payroll by Employee</h2>
+                        </div>
+                        <p>Totals use each saved DTR amount, so past reimbursed payroll stays unchanged.</p>
+                    </div>
+                    <div class="table-container">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Employee Name</th>
+                                    <th>Role</th>
+                                    <th>Days Worked</th>
+                                    <th>Total Earnings</th>
+                                </tr>
+                            </thead>
+                            <tbody id="payroll-table-body"></tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
 
