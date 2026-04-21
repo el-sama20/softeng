@@ -21,22 +21,34 @@
                         <span>EFETEBE AQUA & AGRICULTURAL CORP.</span>
                     </div>
                     <h2>Admin Login</h2>
-                    <p>Sign in to access payroll records and settings.</p>
+                    <p>Sign in to manage payroll records, work week DTR, and settings.</p>
                 </div>
                 <form class="auth-form" onsubmit="app.handleLogin(event)">
-                    <div class="form-group">
+                    <div class="form-group auth-field">
                         <label for="auth-login-username">Username</label>
-                        <input id="auth-login-username" class="form-control" type="text" name="username" required autocomplete="username" placeholder="Enter admin username">
+                        <div class="auth-input-shell">
+                            <i class="fa-solid fa-user"></i>
+                            <input id="auth-login-username" class="form-control" type="text" name="username" required autocomplete="username" placeholder="Enter admin username">
+                        </div>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group auth-field">
                         <label for="auth-login-password">Password</label>
-                        <input id="auth-login-password" class="form-control" type="password" name="password" required autocomplete="current-password" placeholder="Enter password">
+                        <div class="auth-input-shell">
+                            <i class="fa-solid fa-key"></i>
+                            <input id="auth-login-password" class="form-control" type="password" name="password" required autocomplete="current-password" placeholder="Enter password">
+                            <button type="button" class="password-toggle" onclick="app.togglePasswordVisibility('auth-login-password', this)" aria-label="Show password" aria-pressed="false">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                        </div>
                     </div>
-                    <button type="submit" class="btn btn-primary full-width">Log In</button>
+                    <button type="submit" class="btn btn-primary full-width auth-submit">
+                        <span>Log In</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
                 </form>
                 <div class="auth-switch">
                     <span>No admin account yet?</span>
-                    <button type="button" class="btn-auth-link" onclick="app.showAuthView('register')">Register Admin</button>
+                    <button type="button" class="btn-auth-link" onclick="app.showAuthView('register')">Create admin account</button>
                 </div>
             </div>
 
@@ -50,23 +62,45 @@
                     <p>Create an administrator account for this payroll app.</p>
                 </div>
                 <form class="auth-form" onsubmit="app.handleRegister(event)">
-                    <div class="form-group">
+                    <div class="form-group auth-field">
                         <label for="auth-register-name">Admin Name</label>
-                        <input id="auth-register-name" class="form-control" type="text" name="name" required autocomplete="name" placeholder="e.g. Maria Santos">
+                        <div class="auth-input-shell">
+                            <i class="fa-solid fa-id-card"></i>
+                            <input id="auth-register-name" class="form-control" type="text" name="name" required autocomplete="name" placeholder="e.g. Maria Santos">
+                        </div>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group auth-field">
                         <label for="auth-register-username">Username</label>
-                        <input id="auth-register-username" class="form-control" type="text" name="username" required autocomplete="username" placeholder="Choose a username">
+                        <div class="auth-input-shell">
+                            <i class="fa-solid fa-user-shield"></i>
+                            <input id="auth-register-username" class="form-control" type="text" name="username" required autocomplete="username" placeholder="Choose a username">
+                        </div>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group auth-field">
                         <label for="auth-register-password">Password</label>
-                        <input id="auth-register-password" class="form-control" type="password" name="password" required autocomplete="new-password" minlength="6" placeholder="At least 6 characters">
+                        <div class="auth-input-shell">
+                            <i class="fa-solid fa-key"></i>
+                            <input id="auth-register-password" class="form-control" type="password" name="password" required autocomplete="new-password" minlength="6" placeholder="At least 6 characters">
+                            <button type="button" class="password-toggle" onclick="app.togglePasswordVisibility('auth-register-password', this)" aria-label="Show password" aria-pressed="false">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                        </div>
+                        <small class="auth-field-note">Use at least 6 characters.</small>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group auth-field">
                         <label for="auth-register-confirm-password">Confirm Password</label>
-                        <input id="auth-register-confirm-password" class="form-control" type="password" name="confirm-password" required autocomplete="new-password" minlength="6" placeholder="Re-enter password">
+                        <div class="auth-input-shell">
+                            <i class="fa-solid fa-lock"></i>
+                            <input id="auth-register-confirm-password" class="form-control" type="password" name="confirm-password" required autocomplete="new-password" minlength="6" placeholder="Re-enter password">
+                            <button type="button" class="password-toggle" onclick="app.togglePasswordVisibility('auth-register-confirm-password', this)" aria-label="Show password" aria-pressed="false">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                        </div>
                     </div>
-                    <button type="submit" class="btn btn-primary full-width">Create Admin Account</button>
+                    <button type="submit" class="btn btn-primary full-width auth-submit">
+                        <span>Create Admin Account</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
                 </form>
                 <div class="auth-switch">
                     <span>Already registered?</span>
@@ -152,13 +186,13 @@
                         <p id="page-subtitle">Overview of payroll activity and workforce data.</p>
                     </div>
                 </div>
-                <div class="user-profile">
-                    <div class="profile-meta">
+                <button type="button" class="user-profile" onclick="app.openProfileSettingsModal()" aria-haspopup="dialog" aria-controls="profile-settings-modal">
+                    <span class="profile-meta">
                         <strong id="profile-name">Admin User</strong>
                         <small id="profile-role">Administrator</small>
-                    </div>
-                    <div class="avatar"><i class="fa-solid fa-user"></i></div>
-                </div>
+                    </span>
+                    <span class="avatar" aria-hidden="true"><i class="fa-solid fa-user"></i></span>
+                </button>
             </header>
 
             <section id="view-dashboard" class="view active">
@@ -173,15 +207,17 @@
                     <div class="stat-card">
                         <div class="stat-icon bg-green"><i class="fa-solid fa-calendar-week"></i></div>
                         <div class="stat-info">
-                            <h3>Weekly Payroll</h3>
+                            <h3>Sun-Fri Payroll</h3>
                             <p id="dash-weekly-payroll">PHP 0.00</p>
+                            <small id="dash-week-label">Friday salary day</small>
                         </div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon bg-purple"><i class="fa-solid fa-calendar-days"></i></div>
                         <div class="stat-info">
-                            <h3>Monthly Payroll</h3>
+                            <h3>Current Month Payroll</h3>
                             <p id="dash-monthly-payroll">PHP 0.00</p>
+                            <small id="dash-month-label">Actual calendar-month logs</small>
                         </div>
                     </div>
                 </div>
@@ -206,40 +242,87 @@
 
             <section id="view-employees" class="view">
                 <div class="action-bar">
-                    <button class="btn btn-primary" onclick="app.openModal('add-employee-modal')">
+                    <button type="button" class="btn btn-primary" onclick="app.openModal('add-employee-modal')">
                         <i class="fa-solid fa-plus"></i> Add Employee
                     </button>
                     <div class="search-container">
                         <i class="fa-solid fa-magnifying-glass"></i>
                         <input class="form-control" type="text" placeholder="Search employees..." oninput="app.renderEmployeeList()" id="employee-search">
                     </div>
+                    <div class="employee-controls">
+                        <select id="employee-role-filter" class="filter-select" onchange="app.renderEmployeeList()" aria-label="Filter employees by role">
+                            <option value="">All roles</option>
+                        </select>
+                        <select id="employee-sort" class="filter-select" onchange="app.renderEmployeeList()" aria-label="Sort employees">
+                            <option value="name-asc">Name A-Z</option>
+                            <option value="name-desc">Name Z-A</option>
+                            <option value="role-asc">Role A-Z</option>
+                            <option value="earnings-desc">Highest earnings</option>
+                            <option value="newest">Newest added</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="employee-grid" id="employee-grid"></div>
+                <div class="table-container employee-list-container">
+                    <table class="table table-hover align-middle mb-0 employee-list-table">
+                        <thead>
+                            <tr>
+                                <th>Employee</th>
+                                <th>Role</th>
+                                <th>Contact</th>
+                                <th>Address</th>
+                                <th>Total Earnings</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="employee-list-body"></tbody>
+                    </table>
+                </div>
             </section>
 
             <section id="view-weekly" class="view">
-                <div class="action-bar" style="justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
-                    <div style="display: flex; gap: 1rem; align-items: center;">
-                        <button class="btn btn-secondary" onclick="app.changeWeek(-1)">
-                            <i class="fa-solid fa-chevron-left"></i>
-                        </button>
-                        <h2 id="weekly-date-range" style="margin: 0; min-width: 200px; text-align: center;">...</h2>
-                        <button class="btn btn-secondary" onclick="app.changeWeek(1)">
-                            <i class="fa-solid fa-chevron-right"></i>
-                        </button>
+                <div class="weekly-command-center">
+                    <div class="weekly-period-card">
+                        <div class="weekly-period-top">
+                            <span class="panel-eyebrow">Payroll Week</span>
+                            <span id="weekly-period-state" class="status-chip status-pending">Current period</span>
+                        </div>
+                        <div class="weekly-range-row">
+                            <button id="weekly-prev-btn" type="button" class="weekly-nav-btn" onclick="app.changeWeek(-1)" aria-label="Previous payroll week">
+                                <i class="fa-solid fa-chevron-left"></i>
+                            </button>
+                            <div class="weekly-range-copy">
+                                <h2 id="weekly-date-range">...</h2>
+                                <p id="weekly-date-caption">Sunday-Friday payroll. Friday salary day; Saturday rest day.</p>
+                            </div>
+                            <button id="weekly-next-btn" type="button" class="weekly-nav-btn" onclick="app.changeWeek(1)" aria-label="Next payroll week">
+                                <i class="fa-solid fa-chevron-right"></i>
+                            </button>
+                        </div>
                     </div>
-                    <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
-                        <button class="btn btn-primary" onclick="app.openDTRModal()">
-                            <i class="fa-solid fa-plus"></i> Add DTR Record
-                        </button>
-                        <div class="search-container">
+
+                    <div class="weekly-tools-panel">
+                        <div class="weekly-stat-strip">
+                            <div class="weekly-mini-stat">
+                                <span>Salary Day</span>
+                                <strong id="weekly-salary-day">Friday</strong>
+                            </div>
+                            <div class="weekly-mini-stat">
+                                <span>Visible Payroll</span>
+                                <strong id="weekly-visible-total">PHP 0.00</strong>
+                            </div>
+                            <div class="weekly-mini-stat">
+                                <span>Employees</span>
+                                <strong id="weekly-visible-count">0</strong>
+                            </div>
+                        </div>
+                        <div class="search-container weekly-search">
                             <i class="fa-solid fa-magnifying-glass"></i>
-                            <input class="form-control" type="text" placeholder="Search in work week..." oninput="app.renderWeeklyWork()" id="weekly-search">
+                            <input class="form-control" type="text" placeholder="Search in payroll week..." oninput="app.renderWeeklyWork()" id="weekly-search">
                         </div>
                     </div>
                 </div>
 
-                <div class="table-container match-height">
+                <div class="table-container match-height weekly-table-shell">
                     <table class="matrix-table table table-bordered align-middle mb-0">
                         <thead>
                             <tr id="weekly-header-row"></tr>
@@ -258,6 +341,27 @@
                             <p id="payroll-grand-total">PHP 0.00</p>
                         </div>
                     </div>
+                </div>
+                <div class="payroll-period-panel">
+                    <div class="payroll-period-main">
+                        <span class="panel-eyebrow">Current Weekly Payroll Period</span>
+                        <h2 id="payroll-period-range">Current payroll week</h2>
+                        <p id="payroll-period-note">Pending reimbursement.</p>
+                    </div>
+                    <div class="payroll-period-metrics">
+                        <span id="payroll-period-status" class="status-chip status-pending">Pending</span>
+                        <strong id="payroll-period-total">PHP 0.00</strong>
+                        <small id="payroll-period-log-count">0 work logs</small>
+                    </div>
+                    <button type="button" id="payroll-reimburse-btn" class="btn btn-success-soft" onclick="app.markCurrentPayrollReimbursed()">
+                        <i class="fa-solid fa-circle-check"></i> Mark as Reimbursed
+                    </button>
+                </div>
+                <div class="payroll-summary-toolbar">
+                    <p>Export the employee totals and grand total as a printable PDF report.</p>
+                    <button type="button" class="btn btn-primary payroll-export-btn" onclick="app.exportPayrollPDF()">
+                        <i class="fa-solid fa-file-pdf"></i> Export Total PDF
+                    </button>
                 </div>
 
                 <div class="table-container" style="margin-top: 2rem;">
@@ -278,37 +382,21 @@
             <section id="view-settings" class="view">
                 <div class="settings-grid">
                     <div class="settings-panel">
-                        <h2>Payroll and Profile Settings</h2>
-                        <p>Adjust default work day amount and keep your profile details up to date.</p>
+                        <h2>Payroll Settings</h2>
+                        <p>Adjust the default work day amount used for work logs and DTR earnings.</p>
                         <div class="settings-form">
                             <div class="form-group">
                                 <label for="settings-weekly-payroll">Work Day Amount (PHP)</label>
                                 <input id="settings-weekly-payroll" class="form-control" type="number" min="0" step="0.01" name="weekly-payroll" required placeholder="e.g. 450.00">
-                                <small class="field-note">Work logs and DTR earnings use this value when it is greater than zero.</small>
+                                <small class="field-note">Updates apply to current-week unreimbursed payroll and future entries only. Past saved or reimbursed payroll amounts stay unchanged.</small>
                                 <div class="field-actions">
                                     <button type="button" id="settings-edit-weekly-payroll" class="btn btn-secondary" onclick="app.enableSettingsField('weekly-payroll')">Edit</button>
                                     <button type="button" id="settings-update-weekly-payroll" class="btn btn-primary" onclick="app.updateSettingsField('weekly-payroll')">Update</button>
                                 </div>
                             </div>
                             <div class="settings-insight">
-                                <span>Current week logs total</span>
+                                <span>Current Sun-Fri logs total</span>
                                 <strong id="settings-current-week-total">PHP 0.00</strong>
-                            </div>
-                            <div class="form-group">
-                                <label for="settings-profile-name">Profile Name</label>
-                                <input id="settings-profile-name" class="form-control" type="text" name="profile-name" required placeholder="e.g. Maria Santos">
-                                <div class="field-actions">
-                                    <button type="button" id="settings-edit-profile-name" class="btn btn-secondary" onclick="app.enableSettingsField('profile-name')">Edit</button>
-                                    <button type="button" id="settings-update-profile-name" class="btn btn-primary" onclick="app.updateSettingsField('profile-name')">Update</button>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label for="settings-profile-role">Profile Role</label>
-                                <input id="settings-profile-role" class="form-control" type="text" name="profile-role" required placeholder="e.g. Payroll Admin">
-                                <div class="field-actions">
-                                    <button type="button" id="settings-edit-profile-role" class="btn btn-secondary" onclick="app.enableSettingsField('profile-role')">Edit</button>
-                                    <button type="button" id="settings-update-profile-role" class="btn btn-primary" onclick="app.updateSettingsField('profile-role')">Update</button>
-                                </div>
                             </div>
                             <div class="settings-actions">
                                 <button type="button" class="btn btn-secondary" onclick="app.resetSettingsForm()">Reset</button>
@@ -394,9 +482,15 @@
                 <span class="close" onclick="app.closeModal('add-employee-modal')">&times;</span>
             </div>
             <form onsubmit="app.handleAddEmployee(event)">
-                <div class="form-group">
-                    <label for="employee-name">Full Name</label>
-                    <input id="employee-name" class="form-control" type="text" name="name" autocomplete="name" required placeholder="e.g. Juan dela Cruz">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="employee-first-name">First Name</label>
+                        <input id="employee-first-name" class="form-control" type="text" name="first-name" autocomplete="given-name" required placeholder="e.g. Juan">
+                    </div>
+                    <div class="form-group">
+                        <label for="employee-last-name">Last Name</label>
+                        <input id="employee-last-name" class="form-control" type="text" name="last-name" autocomplete="family-name" required placeholder="e.g. Dela Cruz">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="employee-role">Position/Role</label>
@@ -404,16 +498,14 @@
                 </div>
                 <div class="form-group">
                     <label for="employee-contact">Contact Number</label>
-                    <input id="employee-contact" class="form-control" type="tel" name="contact" inputmode="numeric" autocomplete="tel" required placeholder="e.g. 09********">
+                    <input id="employee-contact" class="form-control" type="tel" name="contact" inputmode="numeric" autocomplete="tel" required minlength="11" maxlength="11" pattern="09[0-9]{9}" title="Enter an 11-digit mobile number that starts with 09." oninput="app.sanitizePhoneInput(this)" placeholder="e.g. 09123456789">
+                    <small class="field-note">Use an 11-digit Philippine mobile number starting with 09.</small>
                 </div>
                 <div class="form-group">
                     <label for="employee-address">Address</label>
                     <input id="employee-address" class="form-control" type="text" name="address" autocomplete="street-address" required placeholder="e.g. Purok 1, Barangay 2, City">
                 </div>
-                <div class="form-group">
-                    <label for="employee-rate">Work Rate (PHP/day)</label>
-                    <input id="employee-rate" class="form-control" type="number" min="0" step="0.01" name="daily-rate" required placeholder="e.g. 450.00">
-                </div>
+                
                 <button type="submit" class="btn btn-primary full-width">Create Employee</button>
             </form>
         </div>
@@ -445,6 +537,56 @@
         </div>
     </div>
 
+    <div id="profile-settings-modal" class="modal">
+        <div class="modal-content profile-modal-content">
+            <div class="profile-modal-banner">
+                <button type="button" class="modal-close" onclick="app.closeModal('profile-settings-modal')" aria-label="Close profile settings">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+                <div class="profile-modal-avatar">
+                    <i class="fa-solid fa-user-gear"></i>
+                </div>
+                <div class="profile-modal-title">
+                    <span>Account Profile</span>
+                    <h2>Profile Settings</h2>
+                    <p>Edit the name and role shown in the top profile badge.</p>
+                </div>
+            </div>
+            <div class="settings-form profile-modal-body">
+                <div class="form-group profile-field">
+                    <div class="profile-field-head">
+                        <label for="settings-profile-name">Profile Name</label>
+                        <div class="field-actions">
+                            <button type="button" id="settings-edit-profile-name" class="btn btn-secondary" onclick="app.enableSettingsField('profile-name')">Edit</button>
+                            <button type="button" id="settings-update-profile-name" class="btn btn-primary" onclick="app.updateSettingsField('profile-name')">Update</button>
+                        </div>
+                    </div>
+                    <div class="profile-input-shell">
+                        <i class="fa-solid fa-id-card"></i>
+                        <input id="settings-profile-name" class="form-control" type="text" name="profile-name" required placeholder="e.g. Maria Santos">
+                    </div>
+                </div>
+                <div class="form-group profile-field">
+                    <div class="profile-field-head">
+                        <label for="settings-profile-role">Profile Role</label>
+                        <div class="field-actions">
+                            <button type="button" id="settings-edit-profile-role" class="btn btn-secondary" onclick="app.enableSettingsField('profile-role')">Edit</button>
+                            <button type="button" id="settings-update-profile-role" class="btn btn-primary" onclick="app.updateSettingsField('profile-role')">Update</button>
+                        </div>
+                    </div>
+                    <div class="profile-input-shell">
+                        <i class="fa-solid fa-briefcase"></i>
+                        <input id="settings-profile-role" class="form-control" type="text" name="profile-role" required placeholder="e.g. Payroll Admin">
+                    </div>
+                </div>
+                <div class="settings-actions profile-modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="app.resetProfileSettingsForm()">Reset</button>
+                    <button type="button" class="btn btn-primary" onclick="app.closeModal('profile-settings-modal')">Done</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="add-dtr-modal" class="modal">
         <div class="modal-content dtr-modal-content">
             <div class="modal-header">
@@ -469,7 +611,7 @@
                         <label class="nature-option"><input type="checkbox" name="nature" value="Field Worker"><span>Field Worker</span></label>
                     </div>
                 </div>
-                <small class="dtr-note">Weekly earnings are auto-calculated and not manually editable.</small>
+                <small class="dtr-note">Sunday-Friday earnings are auto-calculated. Friday is salary day; Saturday is rest day.</small>
                 <button type="submit" class="btn btn-primary full-width" style="margin-top:0.75rem;">Save DTR</button>
             </form>
         </div>

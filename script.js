@@ -28,8 +28,14 @@ const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
     minute: '2-digit'
 });
 
+const monthFormatter = new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    year: 'numeric'
+});
+
 const STORAGE_KEYS = {
     employees: 'payflow_employees',
+    payrollPeriods: 'payflow_payroll_periods',
     settings: 'payflow_settings',
     isLoggedIn: 'payflow_is_logged_in',
     currentAdminId: 'payflow_current_admin_id',
@@ -68,6 +74,7 @@ const SETTINGS_FIELD_CONFIG = {
 // --- State Management ---
 const state = {
     employees: [],
+    payrollPeriods: [],
     admins: [],
     currentView: 'dashboard',
     selectedEmployeeId: null,
@@ -99,29 +106,39 @@ const getConfiguredWorkAmount = (employee = null) => {
 
 const getEffectiveLogAmount = (employee, log) => {
     if (!log) return 0;
-    const configuredAmount = Number(state.settings.weeklyPayrollAmount) || 0;
-    if (configuredAmount > 0) return configuredAmount;
-    const storedAmount = Number(log.amount) || 0;
-    return storedAmount > 0 ? storedAmount : getConfiguredWorkAmount(employee);
+    if (log.amount !== undefined && log.amount !== null && log.amount !== '') {
+        const storedAmount = Number(log.amount);
+        return Number.isFinite(storedAmount) ? Math.max(0, storedAmount) : 0;
+    }
+    return getConfiguredWorkAmount(employee);
 };
 
 // --- Utilities ---
 const generateId = () => '_' + Math.random().toString(36).substr(2, 9);
 
-const getMonday = (d) => {
+const PAYROLL_PERIOD_DAYS = 6;
+
+const getPayrollWeekStart = (d) => {
     d = new Date(d);
     const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const diff = d.getDate() - day;
     return new Date(d.setDate(diff));
 };
 
-const formatDate = (d) => d.toISOString().split('T')[0];
-const formatDisplayDate = (dateStr) => shortDateFormatter.format(new Date(dateStr));
+const formatDate = (d) => {
+    const date = new Date(d);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+const formatDisplayDate = (dateStr) => shortDateFormatter.format(parseDateInputValue(dateStr) || new Date(dateStr));
 const formatWeekdayDate = (d) => weekdayFormatter.format(d);
 const formatDateTime = (dateStr) => dateStr ? dateTimeFormatter.format(new Date(dateStr)) : 'Not yet saved';
 
 const saveState = () => {
     localStorage.setItem(STORAGE_KEYS.employees, JSON.stringify(state.employees));
+    localStorage.setItem(STORAGE_KEYS.payrollPeriods, JSON.stringify(state.payrollPeriods));
     localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(state.settings));
     app.render();
 };
@@ -151,18 +168,103 @@ const getWeekNumber = (d) => {
 const createEmptyState = (message, colspan = 4) =>
     `<tr><td colspan="${colspan}" class="empty-state">${message}</td></tr>`;
 
+const escapeHTML = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+}[char]));
+
+const isValidMobileNumber = (value) => /^09\d{9}$/.test(value);
+
+const parseDateInputValue = (dateStr) => {
+    const parts = String(dateStr || '').split('-').map(Number);
+    if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+};
+
+const getWeekRange = (referenceDate = new Date()) => {
+    const start = getPayrollWeekStart(referenceDate);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(start);
+    end.setDate(end.getDate() + PAYROLL_PERIOD_DAYS - 1);
+    end.setHours(23, 59, 59, 999);
+
+    return { start, end };
+};
+
+const formatWeekRangeLabel = (start, end) =>
+    `${formatWeekdayDate(start)} - ${formatWeekdayDate(end)}`;
+
+const getPayrollPeriodId = (start, end, type = 'weekly') =>
+    `${type}:${formatDate(start)}:${formatDate(end)}`;
+
+const isDateWithinRange = (dateStr, start, end) => {
+    const date = parseDateInputValue(dateStr);
+    if (!date) return false;
+    return date >= start && date <= end;
+};
+
+const isRestDay = (dateStr) => {
+    const date = parseDateInputValue(dateStr);
+    return date ? date.getDay() === 6 : false;
+};
+
+const isSalaryDay = (date = new Date()) => new Date(date).getDay() === 5;
+const isValidReimbursementDate = (dateStr) => Boolean(dateStr && isSalaryDay(dateStr));
+
+const isFuturePayrollPeriod = (referenceDate) => {
+    const selectedStart = getPayrollWeekStart(referenceDate);
+    const currentStart = getPayrollWeekStart(new Date());
+    selectedStart.setHours(0, 0, 0, 0);
+    currentStart.setHours(0, 0, 0, 0);
+    return selectedStart > currentStart;
+};
+
+const isPastPayrollPeriod = (referenceDate) => {
+    const selectedStart = getPayrollWeekStart(referenceDate);
+    const currentStart = getPayrollWeekStart(new Date());
+    selectedStart.setHours(0, 0, 0, 0);
+    currentStart.setHours(0, 0, 0, 0);
+    return selectedStart < currentStart;
+};
+
+const isCurrentPayrollLog = (log) => {
+    const logDate = parseDateInputValue(log && log.date);
+    if (!logDate) return false;
+
+    const { start, end } = getWeekRange();
+    return logDate >= start && logDate <= end;
+};
+
 const getCurrentWeekLogsTotal = () => {
-    const now = new Date();
-    const currentWeek = getWeekNumber(now);
-    const currentYear = now.getFullYear();
+    const { start, end } = getWeekRange();
 
     return state.employees.reduce((sum, emp) => {
         const empWeekTotal = emp.workLogs.reduce((empSum, log) => {
-            const logDate = new Date(log.date);
-            const sameWeek = getWeekNumber(logDate) === currentWeek && logDate.getFullYear() === currentYear;
-            return sameWeek ? empSum + getEffectiveLogAmount(emp, log) : empSum;
+            const logDate = parseDateInputValue(log.date);
+            if (!logDate) return empSum;
+            return logDate >= start && logDate <= end ? empSum + getEffectiveLogAmount(emp, log) : empSum;
         }, 0);
         return sum + empWeekTotal;
+    }, 0);
+};
+
+const getCurrentMonthLogsTotal = (referenceDate = new Date()) => {
+    const month = referenceDate.getMonth();
+    const year = referenceDate.getFullYear();
+
+    return state.employees.reduce((sum, emp) => {
+        const empMonthTotal = emp.workLogs.reduce((empSum, log) => {
+            const logDate = parseDateInputValue(log.date);
+            if (!logDate) return empSum;
+
+            const sameMonth = logDate.getMonth() === month && logDate.getFullYear() === year;
+            return sameMonth ? empSum + getEffectiveLogAmount(emp, log) : empSum;
+        }, 0);
+        return sum + empMonthTotal;
     }, 0);
 };
 
@@ -173,8 +275,8 @@ const getPageSubtitle = (viewId) => {
     if (viewId === 'dashboard') return 'Overview of payroll activity and workforce data.';
     if (viewId === 'employees') return `${totalEmployees} employee${totalEmployees === 1 ? '' : 's'} in the system.`;
     if (viewId === 'payroll') return 'Summary of total earnings by employee.';
-    if (viewId === 'weekly') return 'Manage daily attendance and nature-of-work records.';
-    if (viewId === 'settings') return 'Update work day amount and profile information.';
+    if (viewId === 'weekly') return 'Manage Sunday-Friday attendance. Friday is salary day and Saturday is rest day.';
+    if (viewId === 'settings') return 'Update the work day amount used for payroll calculations.';
     if (viewId === 'details') return `${totalLogs} total work log${totalLogs === 1 ? '' : 's'} recorded.`;
     return '';
 };
@@ -182,19 +284,77 @@ const getPageSubtitle = (viewId) => {
 // --- App Controller ---
 const app = {
     init: async () => {
-        state.currentWeekStart = getMonday(new Date());
+        state.currentWeekStart = getPayrollWeekStart(new Date());
         await app.loadInitialData();
         app.render();
     },
 
     loadInitialData: async () => {
         const local = JSON.parse(localStorage.getItem(STORAGE_KEYS.employees) || '[]');
+        const localPayrollPeriods = JSON.parse(localStorage.getItem(STORAGE_KEYS.payrollPeriods) || '[]');
         const localSettings = JSON.parse(localStorage.getItem(STORAGE_KEYS.settings) || '{}');
         const localAdmins = JSON.parse(localStorage.getItem(STORAGE_KEYS.admins) || '[]');
         const storedLoginState = localStorage.getItem(STORAGE_KEYS.isLoggedIn);
         const storedCurrentAdminId = localStorage.getItem(STORAGE_KEYS.currentAdminId);
+        let cleanedInvalidReimbursements = false;
 
-        state.employees = Array.isArray(local) ? local : [];
+        state.employees = Array.isArray(local)
+            ? local.map(item => {
+                const name = (item.name || '').toString().trim();
+                const nameParts = name.split(/\s+/).filter(Boolean);
+                const firstName = (item.firstName || nameParts[0] || 'Employee').toString().trim();
+                const lastName = (item.lastName || nameParts.slice(1).join(' ')).toString().trim();
+
+                return {
+                    ...item,
+                    firstName,
+                    lastName,
+                    name: name || `${firstName} ${lastName}`.trim(),
+                    role: (item.role || 'Worker').toString().trim(),
+                    contact: (item.contact || '').toString().trim(),
+                    address: (item.address || '').toString().trim(),
+                    workLogs: Array.isArray(item.workLogs)
+                        ? item.workLogs.map(log => {
+                            const hasValidReimbursement = Boolean(log.reimbursed && isValidReimbursementDate(log.reimbursedAt));
+                            if (log.reimbursed && !hasValidReimbursement) cleanedInvalidReimbursements = true;
+
+                            return {
+                                ...log,
+                                reimbursed: hasValidReimbursement,
+                                reimbursedAt: hasValidReimbursement ? log.reimbursedAt : null,
+                                reimbursedBy: hasValidReimbursement ? log.reimbursedBy || '' : '',
+                                reimbursementPeriodId: hasValidReimbursement ? log.reimbursementPeriodId || null : null
+                            };
+                        })
+                        : []
+                };
+            })
+            : [];
+        state.payrollPeriods = Array.isArray(localPayrollPeriods)
+            ? localPayrollPeriods
+                .filter(item => item && typeof item === 'object' && item.id && item.startDate && item.endDate)
+                .map(item => {
+                    const hasValidReimbursement = item.status === 'reimbursed' && isValidReimbursementDate(item.reimbursedAt);
+                    if (item.status === 'reimbursed' && !hasValidReimbursement) cleanedInvalidReimbursements = true;
+
+                    return {
+                        id: item.id,
+                        type: item.type || 'weekly',
+                        startDate: item.startDate,
+                        endDate: item.endDate,
+                        salaryDate: item.salaryDate || item.endDate,
+                        totalAmount: Number(item.totalAmount) || 0,
+                        logCount: Number(item.logCount) || 0,
+                        status: hasValidReimbursement ? 'reimbursed' : 'pending',
+                        reimbursedAt: hasValidReimbursement ? item.reimbursedAt : null,
+                        reimbursedBy: hasValidReimbursement ? item.reimbursedBy || '' : ''
+                    };
+                })
+            : [];
+        if (cleanedInvalidReimbursements) {
+            localStorage.setItem(STORAGE_KEYS.employees, JSON.stringify(state.employees));
+            localStorage.setItem(STORAGE_KEYS.payrollPeriods, JSON.stringify(state.payrollPeriods));
+        }
         if (localSettings && typeof localSettings === 'object') {
             state.settings = { ...state.settings, ...localSettings };
         }
@@ -289,6 +449,20 @@ const app = {
         if (loginCardEl) loginCardEl.classList.toggle('active', activeAuthView === 'login');
         if (registerCardEl) registerCardEl.classList.toggle('active', activeAuthView === 'register');
         app.setAuthNotice(state.authNotice.message, state.authNotice.type);
+    },
+
+    togglePasswordVisibility: (inputId, button) => {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+
+        const isVisible = input.type === 'text';
+        input.type = isVisible ? 'password' : 'text';
+        if (button) {
+            button.setAttribute('aria-pressed', String(!isVisible));
+            button.setAttribute('aria-label', isVisible ? 'Show password' : 'Hide password');
+            button.innerHTML = `<i class="fa-solid ${isVisible ? 'fa-eye' : 'fa-eye-slash'}"></i>`;
+        }
+        input.focus();
     },
 
     handleLogin: (e) => {
@@ -458,6 +632,11 @@ const app = {
         if (modal) modal.classList.add('active');
     },
 
+    openProfileSettingsModal: () => {
+        app.renderProfileSettings();
+        app.openModal('profile-settings-modal');
+    },
+
     closeModal: (modalId) => {
         const modal = document.getElementById(modalId);
         if (modal) modal.classList.remove('active');
@@ -486,6 +665,142 @@ const app = {
         app.setSettingsFieldMode(fieldName, true);
     },
 
+    getReimbursedPeriodForDate: (dateStr) => {
+        const date = parseDateInputValue(dateStr);
+        if (!date) return null;
+
+        return state.payrollPeriods.find(period => {
+            if (period.status !== 'reimbursed') return false;
+            if (!isValidReimbursementDate(period.reimbursedAt)) return false;
+            const start = parseDateInputValue(period.startDate);
+            const end = parseDateInputValue(period.endDate);
+            if (!start || !end) return false;
+            end.setHours(23, 59, 59, 999);
+            return date >= start && date <= end;
+        }) || null;
+    },
+
+    isPayrollDateLocked: (dateStr) => {
+        const date = parseDateInputValue(dateStr);
+        if (!date) return false;
+        return Boolean(app.getReimbursedPeriodForDate(dateStr) || isPastPayrollPeriod(date));
+    },
+
+    isLogLocked: (log) => Boolean(log && (
+        (log.reimbursed && isValidReimbursementDate(log.reimbursedAt)) ||
+        app.isPayrollDateLocked(log.date)
+    )),
+
+    getPayrollPeriodSummary: (referenceDate = new Date()) => {
+        const { start, end } = getWeekRange(referenceDate);
+        const id = getPayrollPeriodId(start, end);
+        const startDate = formatDate(start);
+        const endDate = formatDate(end);
+        const savedPeriod = state.payrollPeriods.find(period => period.id === id) || null;
+        const logs = [];
+
+        state.employees.forEach(employee => {
+            employee.workLogs.forEach(log => {
+                if (!isDateWithinRange(log.date, start, end)) return;
+                logs.push({ employee, log, amount: getEffectiveLogAmount(employee, log) });
+            });
+        });
+
+        const totalAmount = logs.reduce((sum, item) => sum + item.amount, 0);
+        const allLogsLocked = logs.length > 0 && logs.every(({ log }) => app.isLogLocked(log));
+        const inferredLockedLog = logs.find(({ log }) => app.isLogLocked(log));
+        const inferredLockedPeriod = inferredLockedLog ? app.getReimbursedPeriodForDate(inferredLockedLog.log.date) : null;
+        const status = savedPeriod && savedPeriod.status === 'reimbursed'
+            ? 'reimbursed'
+            : (allLogsLocked ? 'reimbursed' : 'pending');
+
+        return {
+            id,
+            start,
+            end,
+            startDate,
+            endDate,
+            label: formatWeekRangeLabel(start, end),
+            salaryDate: endDate,
+            status,
+            reimbursedAt: savedPeriod ? savedPeriod.reimbursedAt : (inferredLockedLog ? inferredLockedLog.log.reimbursedAt || inferredLockedPeriod?.reimbursedAt || null : null),
+            reimbursedBy: savedPeriod ? savedPeriod.reimbursedBy : (inferredLockedLog ? inferredLockedLog.log.reimbursedBy || inferredLockedPeriod?.reimbursedBy || '' : ''),
+            totalAmount,
+            logCount: logs.length,
+            logs
+        };
+    },
+
+    getCurrentPayrollPeriodSummary: () => app.getPayrollPeriodSummary(new Date()),
+
+    applyWorkDayAmountToCurrentPayroll: () => {
+        let updatedCount = 0;
+
+        state.employees.forEach(employee => {
+            employee.workLogs.forEach(log => {
+                if (!log.description || app.isLogLocked(log) || !isCurrentPayrollLog(log)) return;
+                log.amount = getConfiguredWorkAmount(employee);
+                updatedCount += 1;
+            });
+        });
+
+        return updatedCount;
+    },
+
+    markCurrentPayrollReimbursed: () => {
+        const summary = app.getCurrentPayrollPeriodSummary();
+        if (!isSalaryDay()) {
+            app.toast(`Payroll can only be marked reimbursed on Friday salary day (${formatDisplayDate(summary.salaryDate)}).`);
+            return;
+        }
+
+        if (summary.status === 'reimbursed') {
+            app.toast('This payroll period is already reimbursed.');
+            return;
+        }
+
+        if (summary.logCount === 0) {
+            app.toast('No work logs in the current payroll period.');
+            return;
+        }
+
+        const confirmed = confirm(`Mark ${summary.label} payroll as reimbursed?\n\nTotal: ${formatCurrency(summary.totalAmount)}\nLogs: ${summary.logCount}\n\nThis will lock these work logs from future rate changes.`);
+        if (!confirmed) return;
+
+        const reimbursedAt = new Date().toISOString();
+        const activeAdmin = app.getCurrentAdmin();
+        const reimbursedBy = activeAdmin ? activeAdmin.name : state.settings.profileName;
+        const period = {
+            id: summary.id,
+            type: 'weekly',
+            startDate: summary.startDate,
+            endDate: summary.endDate,
+            salaryDate: summary.salaryDate,
+            totalAmount: summary.totalAmount,
+            logCount: summary.logCount,
+            status: 'reimbursed',
+            reimbursedAt,
+            reimbursedBy
+        };
+
+        const existingIndex = state.payrollPeriods.findIndex(item => item.id === summary.id);
+        if (existingIndex >= 0) {
+            state.payrollPeriods[existingIndex] = period;
+        } else {
+            state.payrollPeriods.push(period);
+        }
+
+        summary.logs.forEach(({ log }) => {
+            log.reimbursed = true;
+            log.reimbursedAt = reimbursedAt;
+            log.reimbursedBy = reimbursedBy;
+            log.reimbursementPeriodId = summary.id;
+        });
+
+        saveState();
+        app.toast('Current payroll marked as reimbursed and locked.');
+    },
+
     updateSettingsField: (fieldName) => {
         const config = SETTINGS_FIELD_CONFIG[fieldName];
         if (!config) return;
@@ -495,6 +810,10 @@ const app = {
 
         const nextValue = config.normalize(input.value);
         state.settings[config.stateKey] = nextValue;
+        input.value = nextValue;
+        const updatedCurrentPayrollCount = fieldName === 'weekly-payroll'
+            ? app.applyWorkDayAmountToCurrentPayroll()
+            : 0;
 
         if (config.adminKey && state.currentAdminId) {
             const activeAdmin = app.getCurrentAdmin();
@@ -506,12 +825,36 @@ const app = {
 
         state.settings.lastUpdatedAt = new Date().toISOString();
         saveState();
-        app.toast(`${config.label} updated.`);
+        if (fieldName === 'profile-name' || fieldName === 'profile-role') {
+            app.renderProfileSettings();
+        } else {
+            app.setSettingsFieldMode(fieldName, false);
+        }
+
+        const message = fieldName === 'weekly-payroll'
+            ? `${config.label} updated for unreimbursed current payroll${updatedCurrentPayrollCount ? ` (${updatedCurrentPayrollCount} log${updatedCurrentPayrollCount === 1 ? '' : 's'})` : ''}. Past records kept.`
+            : `${config.label} updated.`;
+        app.toast(message);
     },
 
     resetSettingsForm: () => {
         app.renderSettings();
         app.toast('Settings form reset.');
+    },
+
+    resetProfileSettingsForm: () => {
+        app.renderProfileSettings();
+        app.toast('Profile form reset.');
+    },
+
+    sanitizePhoneInput: (input) => {
+        if (!input) return;
+        input.value = input.value.replace(/\D/g, '').slice(0, 11);
+        if (!input.value || isValidMobileNumber(input.value)) {
+            input.setCustomValidity('');
+        } else {
+            input.setCustomValidity('Enter an 11-digit mobile number that starts with 09.');
+        }
     },
 
     logout: () => {
@@ -535,13 +878,33 @@ const app = {
     handleAddEmployee: (e) => {
         e.preventDefault();
         const form = e.target;
+        const contactInput = form.contact;
+        const firstName = form['first-name'].value.trim();
+        const lastName = form['last-name'].value.trim();
+        const fullName = [firstName, lastName].filter(Boolean).join(' ');
+        app.sanitizePhoneInput(contactInput);
+
+        if (!firstName || !lastName) {
+            app.toast('Enter both first name and last name.');
+            return;
+        }
+
+        if (!isValidMobileNumber(contactInput.value.trim())) {
+            contactInput.reportValidity();
+            app.toast('Contact number must be 11 digits and start with 09.');
+            return;
+        }
+
+        const dailyRateInput = form['daily-rate'];
         const newEmployee = {
             id: generateId(),
-            name: form.name.value.trim(),
+            firstName,
+            lastName,
+            name: fullName,
             role: form.role.value.trim(),
-            contact: form.contact.value.trim(),
+            contact: contactInput.value.trim(),
             address: form.address.value.trim(),
-            dailyRate: parseFloat(form['daily-rate'].value) || 0,
+            dailyRate: dailyRateInput ? parseFloat(dailyRateInput.value) || 0 : getConfiguredWorkAmount(),
             joinedDate: new Date().toISOString(),
             workLogs: []
         };
@@ -565,10 +928,21 @@ const app = {
         const employee = state.employees.find(emp => emp.id === empId);
 
         if (!employee) return;
+        const dateStr = form.date.value;
+
+        if (isRestDay(dateStr)) {
+            app.toast('Saturday is the rest day and is not included in payroll.');
+            return;
+        }
+
+        if (app.isPayrollDateLocked(dateStr)) {
+            app.toast('This payroll period is reimbursed and locked.');
+            return;
+        }
 
         const newLog = {
             id: generateId(),
-            date: form.date.value,
+            date: dateStr,
             description: form.description.value.trim(),
             amount: getConfiguredWorkAmount(employee)
         };
@@ -583,6 +957,12 @@ const app = {
     },
 
     deleteEmployee: (id) => {
+        const employee = state.employees.find(emp => emp.id === id);
+        if (employee && employee.workLogs.length > 0) {
+            app.toast('Employees with payroll history cannot be deleted.');
+            return;
+        }
+
         if (confirm('Are you sure you want to remove this employee? This action cannot be undone.')) {
             state.employees = state.employees.filter(emp => emp.id !== id);
             saveState();
@@ -594,6 +974,11 @@ const app = {
     deleteWorkLog: (empId, logId) => {
         const employee = state.employees.find(emp => emp.id === empId);
         if (!employee) return;
+        const log = employee.workLogs.find(item => item.id === logId);
+        if (app.isLogLocked(log)) {
+            app.toast('Reimbursed work logs are locked.');
+            return;
+        }
         employee.workLogs = employee.workLogs.filter(log => log.id !== logId);
         saveState();
         app.toast('Work log removed.');
@@ -603,6 +988,14 @@ const app = {
     changeWeek: (offset) => {
         const d = new Date(state.currentWeekStart);
         d.setDate(d.getDate() + (offset * 7));
+        if (isFuturePayrollPeriod(d)) {
+            app.toast('Next payroll week DTR opens when that week starts.');
+            return;
+        }
+        if (isPastPayrollPeriod(d) || app.getPayrollPeriodSummary(d).status === 'reimbursed') {
+            app.toast('That payroll week is already completed and reimbursed.');
+            return;
+        }
         state.currentWeekStart = d;
         app.renderWeeklyWork();
     },
@@ -620,19 +1013,29 @@ const app = {
         const defaultEmpId = empId || (state.employees[0] ? state.employees[0].id : '');
         const defaultDate = dateStr || formatDate(new Date());
 
+        if (isRestDay(defaultDate)) {
+            app.toast('Saturday is the rest day and is not included in payroll.');
+            return;
+        }
+
+        if (app.isPayrollDateLocked(defaultDate)) {
+            app.toast('This payroll period is reimbursed and locked.');
+            return;
+        }
+
         if (defaultEmpId) empSelect.value = defaultEmpId;
         dateInput.value = defaultDate;
 
-        document.querySelectorAll('#add-dtr-modal input[name="nature"]').forEach(cb => {
-            cb.checked = false;
+        document.querySelectorAll('#add-dtr-modal input[name="nature"]').forEach(rb => {
+            rb.checked = false;
         });
 
         const employee = state.employees.find(emp => emp.id === defaultEmpId);
         const existingLog = employee ? employee.workLogs.find(log => log.date === defaultDate) : null;
         if (existingLog && existingLog.description.startsWith('Work: ')) {
-            const selected = existingLog.description.substring(6).split(', ');
-            document.querySelectorAll('#add-dtr-modal input[name="nature"]').forEach(cb => {
-                cb.checked = selected.includes(cb.value);
+            const selected = existingLog.description.substring(6);
+            document.querySelectorAll('#add-dtr-modal input[name="nature"]').forEach(rb => {
+                rb.checked = (rb.value === selected);
             });
         }
 
@@ -642,6 +1045,16 @@ const app = {
     setDTRStatus: (empId, dateStr, checked) => {
         const employee = state.employees.find(emp => emp.id === empId);
         if (!employee) return;
+
+        if (isRestDay(dateStr)) {
+            app.toast('Saturday is the rest day and is not included in payroll.');
+            return;
+        }
+
+        if (app.isPayrollDateLocked(dateStr)) {
+            app.toast('This payroll period is reimbursed and locked.');
+            return;
+        }
 
         if (checked) {
             app.openDTRModal(empId, dateStr);
@@ -659,19 +1072,31 @@ const app = {
         const form = e.target;
         const empId = form['dtr-employee'].value;
         const dateStr = form['dtr-date'].value;
-        const selectedNature = Array.from(form.querySelectorAll('input[name="nature"]:checked')).map(cb => cb.value);
-
-        if (selectedNature.length === 0) {
-            alert('Select at least one nature of work.');
-            return;
-        }
+        const selectedNature = Array.from(form.querySelectorAll('input[name="nature"]:checked')).map(rb => rb.value);
 
         const employee = state.employees.find(emp => emp.id === empId);
         if (!employee) return;
+        if (isRestDay(dateStr)) {
+            app.toast('Saturday is the rest day and is not included in payroll.');
+            return;
+        }
+        if (app.isPayrollDateLocked(dateStr)) {
+            app.toast('This payroll period is reimbursed and locked.');
+            return;
+        }
 
-        const rate = getConfiguredWorkAmount(employee);
-        const desc = `Work: ${selectedNature.sort().join(', ')}`;
+        let rate = 0;
+        let desc = '';
+        if (selectedNature.length > 0) {
+            rate = getConfiguredWorkAmount(employee);
+            desc = `Work: ${selectedNature[0]}`;
+        }
+
         const existingLog = employee.workLogs.find(log => log.date === dateStr);
+        if (app.isLogLocked(existingLog)) {
+            app.toast('Reimbursed work logs are locked.');
+            return;
+        }
 
         if (existingLog) {
             existingLog.description = desc;
@@ -695,8 +1120,20 @@ const app = {
     toggleWorkType: (empId, dateStr, type) => {
         const employee = state.employees.find(emp => emp.id === empId);
         if (!employee) return;
+        if (isRestDay(dateStr)) {
+            app.toast('Saturday is the rest day and is not included in payroll.');
+            return;
+        }
+        if (app.isPayrollDateLocked(dateStr)) {
+            app.toast('This payroll period is reimbursed and locked.');
+            return;
+        }
 
         let log = employee.workLogs.find(item => item.date === dateStr);
+        if (app.isLogLocked(log)) {
+            app.toast('Reimbursed work logs are locked.');
+            return;
+        }
         let workTypes = [];
 
         if (log) {
@@ -751,6 +1188,7 @@ const app = {
     renderDashboard: () => {
         const totalEmployees = state.employees.length;
         const weeklyPayroll = getCurrentWeekLogsTotal();
+        const monthlyPayroll = getCurrentMonthLogsTotal();
         const recentLogs = [];
 
         state.employees.forEach(emp => {
@@ -762,11 +1200,17 @@ const app = {
         recentLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
         const top5 = recentLogs.slice(0, 5);
         const weeklyValueToDisplay = weeklyPayroll;
-        const monthlyValueToDisplay = weeklyValueToDisplay * 4;
 
         document.getElementById('dash-total-employees').innerText = totalEmployees;
         document.getElementById('dash-weekly-payroll').innerText = formatCurrency(weeklyValueToDisplay);
-        document.getElementById('dash-monthly-payroll').innerText = formatCurrency(monthlyValueToDisplay);
+        const weekLabel = document.getElementById('dash-week-label');
+        if (weekLabel) {
+            const { start, end } = getWeekRange();
+            weekLabel.innerText = `${formatWeekRangeLabel(start, end)} · Friday salary day`;
+        }
+        document.getElementById('dash-monthly-payroll').innerText = formatCurrency(monthlyPayroll);
+        const monthLabel = document.getElementById('dash-month-label');
+        if (monthLabel) monthLabel.innerText = `${monthFormatter.format(new Date())} actual logs`;
 
         const tbody = document.getElementById('recent-logs-body');
         tbody.innerHTML = '';
@@ -794,18 +1238,25 @@ const app = {
         if (roleEl) roleEl.innerText = state.settings.profileRole;
     },
 
-    renderSettings: () => {
-        const weeklyPayrollInput = document.getElementById('settings-weekly-payroll');
+    renderProfileSettings: () => {
         const profileNameInput = document.getElementById('settings-profile-name');
         const profileRoleInput = document.getElementById('settings-profile-role');
+
+        if (profileNameInput) profileNameInput.value = state.settings.profileName;
+        if (profileRoleInput) profileRoleInput.value = state.settings.profileRole;
+
+        app.setSettingsFieldMode('profile-name', false);
+        app.setSettingsFieldMode('profile-role', false);
+    },
+
+    renderSettings: () => {
+        const weeklyPayrollInput = document.getElementById('settings-weekly-payroll');
         const currentWeekTotalEl = document.getElementById('settings-current-week-total');
         const totalEmployeesEl = document.getElementById('settings-total-employees');
         const totalLogsEl = document.getElementById('settings-total-logs');
         const lastUpdatedEl = document.getElementById('settings-last-updated');
 
         if (weeklyPayrollInput) weeklyPayrollInput.value = Number(state.settings.weeklyPayrollAmount || 0);
-        if (profileNameInput) profileNameInput.value = state.settings.profileName;
-        if (profileRoleInput) profileRoleInput.value = state.settings.profileRole;
         if (currentWeekTotalEl) currentWeekTotalEl.innerText = formatCurrency(getCurrentWeekLogsTotal());
         if (totalEmployeesEl) totalEmployeesEl.innerText = String(state.employees.length);
         if (totalLogsEl) {
@@ -814,89 +1265,373 @@ const app = {
         }
         if (lastUpdatedEl) lastUpdatedEl.innerText = formatDateTime(state.settings.lastUpdatedAt);
 
-        Object.keys(SETTINGS_FIELD_CONFIG).forEach((fieldName) => {
-            app.setSettingsFieldMode(fieldName, false);
-        });
+        app.setSettingsFieldMode('weekly-payroll', false);
+    },
+
+    renderEmployeeFilters: (selectedRole = '') => {
+        const roleFilter = document.getElementById('employee-role-filter');
+        if (!roleFilter) return;
+
+        const roles = [...new Set(state.employees
+            .map(emp => (emp.role || '').trim())
+            .filter(Boolean))]
+            .sort((a, b) => a.localeCompare(b));
+
+        roleFilter.innerHTML = `
+            <option value="">All roles</option>
+            ${roles.map(role => `<option value="${escapeHTML(role)}">${escapeHTML(role)}</option>`).join('')}
+        `;
+        roleFilter.value = roles.includes(selectedRole) ? selectedRole : '';
     },
 
     renderEmployeeList: () => {
-        const grid = document.getElementById('employee-grid');
-        grid.innerHTML = '';
+        const tbody = document.getElementById('employee-list-body');
+        if (!tbody) return;
+        tbody.innerHTML = '';
 
         const searchInput = document.getElementById('employee-search');
+        const roleFilter = document.getElementById('employee-role-filter');
+        const sortSelect = document.getElementById('employee-sort');
         const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
+        let selectedRole = roleFilter ? roleFilter.value : '';
+        const sortMode = sortSelect ? sortSelect.value : 'name-asc';
 
-        const filtered = state.employees.filter(emp =>
-            emp.name.toLowerCase().includes(searchTerm) || emp.role.toLowerCase().includes(searchTerm)
-        );
+        app.renderEmployeeFilters(selectedRole);
+        selectedRole = roleFilter ? roleFilter.value : '';
+
+        const getEmployeeTotal = (emp) =>
+            emp.workLogs.reduce((sum, log) => sum + getEffectiveLogAmount(emp, log), 0);
+
+        const filtered = state.employees
+            .filter(emp => {
+                const matchesSearch = emp.name.toLowerCase().includes(searchTerm) ||
+                    emp.role.toLowerCase().includes(searchTerm);
+                const matchesRole = !selectedRole || emp.role === selectedRole;
+                return matchesSearch && matchesRole;
+            })
+            .sort((a, b) => {
+                if (sortMode === 'name-desc') return b.name.localeCompare(a.name);
+                if (sortMode === 'role-asc') return a.role.localeCompare(b.role) || a.name.localeCompare(b.name);
+                if (sortMode === 'earnings-desc') return getEmployeeTotal(b) - getEmployeeTotal(a);
+                if (sortMode === 'newest') return new Date(b.joinedDate || 0) - new Date(a.joinedDate || 0);
+                return a.name.localeCompare(b.name);
+            });
 
         if (state.employees.length === 0) {
-            grid.innerHTML = '<p class="empty-state" style="grid-column: 1/-1;">No employees yet. Click "Add Employee" to get started.</p>';
+            tbody.innerHTML = createEmptyState('No employees yet. Click "Add Employee" to get started.', 6);
             return;
         }
 
         if (filtered.length === 0) {
-            grid.innerHTML = '<p class="empty-state" style="grid-column: 1/-1;">No employees match your search.</p>';
+            tbody.innerHTML = createEmptyState('No employees match your current search or filter.', 6);
             return;
         }
 
         filtered.forEach(emp => {
-            const card = document.createElement('div');
-            card.className = 'employee-card';
-            card.onclick = (e) => {
-                if (!e.target.closest('.btn-delete')) app.viewEmployee(emp.id);
+            const tr = document.createElement('tr');
+            tr.className = 'employee-list-row';
+            tr.onclick = (e) => {
+                if (!e.target.closest('button')) app.viewEmployee(emp.id);
             };
 
-            const total = emp.workLogs.reduce((sum, log) => sum + getEffectiveLogAmount(emp, log), 0);
+            const total = getEmployeeTotal(emp);
+            const hasPayrollHistory = emp.workLogs.length > 0;
 
-            card.innerHTML = `
-                <div class="card-header">
-                    <div class="emp-avatar">
-                        <i class="fa-solid fa-user"></i>
+            tr.innerHTML = `
+                <td>
+                    <div class="employee-list-name">
+                        <div class="emp-avatar"><i class="fa-solid fa-user"></i></div>
+                        <div>
+                            <strong>${escapeHTML(emp.name)}</strong>
+                        </div>
                     </div>
-                </div>
-                <div class="emp-info">
-                    <h3>${emp.name}</h3>
-                    <p>${emp.role}</p>
-                </div>
-                <div style="margin-top: auto; padding-top: 0.8rem; border-top: 1px solid #edf2f1; display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <small style="color:#64748b">Total Earnings</small>
-                        <div style="font-weight:800; color:var(--primary);">${formatCurrency(total)}</div>
-                    </div>
-                    <button class="btn btn-delete" onclick="app.deleteEmployee('${emp.id}')">
-                        <i class="fa-solid fa-trash"></i>
+                </td>
+                <td>${escapeHTML(emp.role)}</td>
+                <td>${escapeHTML(emp.contact || 'N/A')}</td>
+                <td>${escapeHTML(emp.address || 'N/A')}</td>
+                <td class="employee-list-total">${formatCurrency(total)}</td>
+                <td>
+                    <button class="btn ${hasPayrollHistory ? 'btn-locked' : 'btn-delete'}" onclick="app.deleteEmployee('${emp.id}')" ${hasPayrollHistory ? 'disabled' : ''} title="${hasPayrollHistory ? 'Locked because this employee has payroll history' : 'Delete employee'}">
+                        <i class="fa-solid ${hasPayrollHistory ? 'fa-lock' : 'fa-trash'}"></i>
                     </button>
-                </div>
+                </td>
             `;
-            grid.appendChild(card);
+            tbody.appendChild(tr);
         });
+    },
+
+    getPayrollSummary: () => {
+        const rows = state.employees.map(emp => {
+            const totalEarnings = emp.workLogs.reduce((sum, log) => sum + getEffectiveLogAmount(emp, log), 0);
+            return {
+                name: emp.name,
+                role: emp.role,
+                daysWorked: emp.workLogs.length,
+                totalEarnings
+            };
+        });
+
+        return {
+            rows,
+            grandTotal: rows.reduce((sum, row) => sum + row.totalEarnings, 0),
+            totalDays: rows.reduce((sum, row) => sum + row.daysWorked, 0)
+        };
+    },
+
+    exportPayrollPDF: () => {
+        const { rows, grandTotal, totalDays } = app.getPayrollSummary();
+        const periodSummary = app.getCurrentPayrollPeriodSummary();
+        const generatedAt = dateTimeFormatter.format(new Date());
+        const activeAdmin = app.getCurrentAdmin();
+        const generatedBy = activeAdmin ? activeAdmin.name : state.settings.profileName;
+        const periodStatus = periodSummary.status === 'reimbursed'
+            ? `Reimbursed${periodSummary.reimbursedAt ? ` on ${formatDateTime(periodSummary.reimbursedAt)}` : ''}`
+            : 'Pending reimbursement';
+
+        const rowsMarkup = rows.length
+            ? rows.map(row => `
+                <tr>
+                    <td>${escapeHTML(row.name)}</td>
+                    <td>${escapeHTML(row.role)}</td>
+                    <td>${row.daysWorked}</td>
+                    <td>${escapeHTML(formatCurrency(row.totalEarnings))}</td>
+                </tr>
+            `).join('')
+            : '<tr><td colspan="4" class="empty">No payroll records found.</td></tr>';
+
+        const reportWindow = window.open('', '_blank');
+        if (!reportWindow) {
+            app.toast('Allow pop-ups to export the payroll PDF.');
+            return;
+        }
+
+        reportWindow.document.write(`
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Payroll Summary PDF</title>
+                <style>
+                    @page { margin: 18mm; }
+                    * { box-sizing: border-box; }
+                    body {
+                        margin: 0;
+                        color: #0f172a;
+                        font-family: "Inter", "Segoe UI", sans-serif;
+                        background: #fff;
+                    }
+                    .report {
+                        width: 100%;
+                    }
+                    .header {
+                        display: flex;
+                        justify-content: space-between;
+                        gap: 24px;
+                        border-bottom: 3px solid #0f766e;
+                        padding-bottom: 16px;
+                        margin-bottom: 22px;
+                    }
+                    .eyebrow {
+                        color: #0f766e;
+                        font-size: 12px;
+                        font-weight: 800;
+                        letter-spacing: 0.12em;
+                        text-transform: uppercase;
+                    }
+                    h1 {
+                        margin: 6px 0 4px;
+                        font-size: 30px;
+                    }
+                    .meta {
+                        color: #475569;
+                        font-size: 13px;
+                        line-height: 1.7;
+                        text-align: right;
+                    }
+                    .summary {
+                        display: grid;
+                        grid-template-columns: repeat(3, 1fr);
+                        gap: 12px;
+                        margin-bottom: 20px;
+                    }
+                    .summary-card {
+                        border: 1px solid #dbe7e5;
+                        border-radius: 14px;
+                        padding: 14px;
+                        background: #f8fbfa;
+                    }
+                    .summary-card span {
+                        display: block;
+                        color: #64748b;
+                        font-size: 12px;
+                        font-weight: 700;
+                        margin-bottom: 6px;
+                    }
+                    .summary-card strong {
+                        color: #0f766e;
+                        font-size: 22px;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                    }
+                    th {
+                        background: #0f766e;
+                        color: #fff;
+                        text-align: left;
+                        font-size: 12px;
+                        letter-spacing: 0.04em;
+                        text-transform: uppercase;
+                    }
+                    th, td {
+                        border: 1px solid #dbe7e5;
+                        padding: 10px 12px;
+                    }
+                    td {
+                        font-size: 13px;
+                    }
+                    td:last-child,
+                    th:last-child {
+                        text-align: right;
+                    }
+                    tfoot td {
+                        font-size: 15px;
+                        font-weight: 800;
+                        background: #ecfdf5;
+                    }
+                    .empty {
+                        color: #64748b;
+                        text-align: center !important;
+                    }
+                    .note {
+                        margin-top: 18px;
+                        color: #64748b;
+                        font-size: 12px;
+                    }
+                </style>
+            </head>
+            <body>
+                <main class="report">
+                    <section class="header">
+                        <div>
+                            <div class="eyebrow">EFETEBE AQUA & AGRICULTURAL CORP.</div>
+                            <h1>Payroll Summary</h1>
+                            <p>Employee totals and grand total payroll report.</p>
+                        </div>
+                        <div class="meta">
+                            <div><strong>Generated:</strong> ${escapeHTML(generatedAt)}</div>
+                            <div><strong>Generated by:</strong> ${escapeHTML(generatedBy)}</div>
+                            <div><strong>Current period:</strong> ${escapeHTML(periodSummary.label)}</div>
+                            <div><strong>Salary day:</strong> ${escapeHTML(formatDisplayDate(periodSummary.salaryDate))}</div>
+                            <div><strong>Period status:</strong> ${escapeHTML(periodStatus)}</div>
+                        </div>
+                    </section>
+                    <section class="summary">
+                        <div class="summary-card">
+                            <span>Total Employees</span>
+                            <strong>${rows.length}</strong>
+                        </div>
+                        <div class="summary-card">
+                            <span>Total Days Worked</span>
+                            <strong>${totalDays}</strong>
+                        </div>
+                        <div class="summary-card">
+                            <span>Grand Total Payroll</span>
+                            <strong>${escapeHTML(formatCurrency(grandTotal))}</strong>
+                        </div>
+                    </section>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Employee Name</th>
+                                <th>Role</th>
+                                <th>Days Worked</th>
+                                <th>Total Earnings</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rowsMarkup}</tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="3">Grand Total</td>
+                                <td>${escapeHTML(formatCurrency(grandTotal))}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    <p class="note">Payroll totals use the saved amount on each work log. Rate changes update only the current payroll period and future entries, so past reimbursed payroll remains unchanged.</p>
+                </main>
+            </body>
+            </html>
+        `);
+        reportWindow.document.close();
+        reportWindow.focus();
+        setTimeout(() => reportWindow.print(), 250);
+        app.toast('Payroll PDF report opened.');
+    },
+
+    renderCurrentPayrollPeriod: () => {
+        const summary = app.getCurrentPayrollPeriodSummary();
+        const rangeEl = document.getElementById('payroll-period-range');
+        const noteEl = document.getElementById('payroll-period-note');
+        const totalEl = document.getElementById('payroll-period-total');
+        const countEl = document.getElementById('payroll-period-log-count');
+        const statusEl = document.getElementById('payroll-period-status');
+        const reimburseBtn = document.getElementById('payroll-reimburse-btn');
+
+        if (rangeEl) rangeEl.innerText = summary.label;
+        if (totalEl) totalEl.innerText = formatCurrency(summary.totalAmount);
+        if (countEl) countEl.innerText = `${summary.logCount} work log${summary.logCount === 1 ? '' : 's'}`;
+
+        if (statusEl) {
+            const isReimbursed = summary.status === 'reimbursed';
+            statusEl.innerText = isReimbursed ? 'Reimbursed' : 'Pending';
+            statusEl.classList.toggle('status-paid', isReimbursed);
+            statusEl.classList.toggle('status-pending', !isReimbursed);
+        }
+
+        if (noteEl) {
+            if (summary.status === 'reimbursed') {
+                noteEl.innerText = `Locked by ${summary.reimbursedBy || 'Admin'} on ${formatDateTime(summary.reimbursedAt)}.`;
+            } else if (!isSalaryDay()) {
+                noteEl.innerText = `Reimbursement opens on Friday salary day (${formatDisplayDate(summary.salaryDate)}). Saturday is rest day.`;
+            } else {
+                noteEl.innerText = `Friday salary day. Mark this Sunday-Friday payroll as reimbursed once payment is released.`;
+            }
+        }
+
+        if (reimburseBtn) {
+            const disabled = summary.status === 'reimbursed' || summary.logCount === 0 || !isSalaryDay();
+            reimburseBtn.disabled = disabled;
+            reimburseBtn.innerHTML = summary.status === 'reimbursed'
+                ? '<i class="fa-solid fa-lock"></i> Reimbursed'
+                : (isSalaryDay()
+                    ? '<i class="fa-solid fa-circle-check"></i> Mark as Reimbursed'
+                    : '<i class="fa-solid fa-calendar-day"></i> Available Friday');
+        }
     },
 
     renderPayroll: () => {
         const tbody = document.getElementById('payroll-table-body');
         tbody.innerHTML = '';
 
-        let grandTotal = 0;
-        state.employees.forEach(emp => {
-            const totalEarnings = emp.workLogs.reduce((sum, log) => sum + getEffectiveLogAmount(emp, log), 0);
-            grandTotal += totalEarnings;
-
+        const { rows, grandTotal } = app.getPayrollSummary();
+        rows.forEach(row => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td><strong>${emp.name}</strong></td>
-                <td>${emp.role}</td>
-                <td>${emp.workLogs.length} day${emp.workLogs.length === 1 ? '' : 's'}</td>
-                <td style="color: var(--success); font-weight: 700;">${formatCurrency(totalEarnings)}</td>
+                <td><strong>${escapeHTML(row.name)}</strong></td>
+                <td>${escapeHTML(row.role)}</td>
+                <td>${row.daysWorked} day${row.daysWorked === 1 ? '' : 's'}</td>
+                <td style="color: var(--success); font-weight: 700;">${formatCurrency(row.totalEarnings)}</td>
             `;
             tbody.appendChild(tr);
         });
 
-        if (state.employees.length === 0) {
+        if (rows.length === 0) {
             tbody.innerHTML = createEmptyState('No employees found.', 4);
         }
 
         document.getElementById('payroll-grand-total').innerText = formatCurrency(grandTotal);
+        app.renderCurrentPayrollPeriod();
     },
 
     toggleDropdown: (id, event) => {
@@ -909,25 +1644,55 @@ const app = {
     },
 
     renderWeeklyWork: () => {
-        const start = new Date(state.currentWeekStart);
-        const end = new Date(start);
-        end.setDate(end.getDate() + 6);
+        if (isFuturePayrollPeriod(state.currentWeekStart) || isPastPayrollPeriod(state.currentWeekStart)) {
+            state.currentWeekStart = getPayrollWeekStart(new Date());
+        }
 
-        document.getElementById('weekly-date-range').innerText =
-            `${shortDateFormatter.format(start)} - ${shortDateFormatter.format(end)}`;
+        const summary = app.getPayrollPeriodSummary(state.currentWeekStart);
+        const { start, end } = summary;
+        const prevStart = new Date(start.getFullYear(), start.getMonth(), start.getDate() - 7);
+        const prevSummary = app.getPayrollPeriodSummary(prevStart);
+        const nextStart = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7);
+
+        const prevBtn = document.getElementById('weekly-prev-btn');
+        if (prevBtn) {
+            const prevLocked = isPastPayrollPeriod(prevStart) || prevSummary.status === 'reimbursed';
+            prevBtn.disabled = prevLocked;
+            prevBtn.title = prevLocked ? 'Previous payroll week is already completed and reimbursed.' : 'Previous payroll week';
+        }
+
+        const nextBtn = document.getElementById('weekly-next-btn');
+        if (nextBtn) {
+            nextBtn.disabled = isFuturePayrollPeriod(nextStart);
+            nextBtn.title = nextBtn.disabled ? 'Next payroll week opens when that week starts.' : 'Next payroll week';
+        }
+
+        const dateRangeEl = document.getElementById('weekly-date-range');
+        if (dateRangeEl) dateRangeEl.innerText = `${shortDateFormatter.format(start)} - ${shortDateFormatter.format(end)}`;
+
+        const captionEl = document.getElementById('weekly-date-caption');
+        if (captionEl) captionEl.innerText = `Sunday-Friday payroll. Salary day is ${formatDisplayDate(summary.salaryDate)}; Saturday is rest day.`;
+
+        const periodStateEl = document.getElementById('weekly-period-state');
+        if (periodStateEl) {
+            const isReimbursed = summary.status === 'reimbursed';
+            periodStateEl.innerText = isReimbursed ? 'Reimbursed and locked' : 'Open period';
+            periodStateEl.classList.toggle('status-paid', isReimbursed);
+            periodStateEl.classList.toggle('status-pending', !isReimbursed);
+        }
 
         const headerRow = document.getElementById('weekly-header-row');
         headerRow.innerHTML = '<th>Employee</th>';
 
         const currentDates = [];
-        for (let i = 0; i < 7; i++) {
+        for (let i = 0; i < PAYROLL_PERIOD_DAYS; i++) {
             const d = new Date(start);
             d.setDate(d.getDate() + i);
             const dateStr = formatDate(d);
             currentDates.push({ dateObj: d, dateStr });
-            headerRow.innerHTML += `<th>${formatWeekdayDate(d)}</th>`;
+            headerRow.innerHTML += `<th><span>${formatWeekdayDate(d)}</span><small>${i === PAYROLL_PERIOD_DAYS - 1 ? 'Salary day' : 'Work day'}</small></th>`;
         }
-        headerRow.innerHTML += '<th>Weekly Earnings</th>';
+        headerRow.innerHTML += '<th>Payroll Earnings</th>';
 
         const tbody = document.getElementById('weekly-table-body');
         tbody.innerHTML = '';
@@ -938,33 +1703,50 @@ const app = {
             emp.name.toLowerCase().includes(searchTerm) || emp.role.toLowerCase().includes(searchTerm)
         );
 
+        const getEmployeeWeekTotal = (emp) => currentDates.reduce((sum, dayInfo) => {
+            const log = emp.workLogs.find(item => item.date === dayInfo.dateStr);
+            return log ? sum + getEffectiveLogAmount(emp, log) : sum;
+        }, 0);
+
+        const visibleTotal = filtered.reduce((sum, emp) => sum + getEmployeeWeekTotal(emp), 0);
+        const salaryDayEl = document.getElementById('weekly-salary-day');
+        const visibleTotalEl = document.getElementById('weekly-visible-total');
+        const visibleCountEl = document.getElementById('weekly-visible-count');
+
+        if (salaryDayEl) salaryDayEl.innerText = formatDisplayDate(summary.salaryDate);
+        if (visibleTotalEl) visibleTotalEl.innerText = formatCurrency(visibleTotal);
+        if (visibleCountEl) visibleCountEl.innerText = String(filtered.length);
+
         if (state.employees.length === 0) {
-            tbody.innerHTML = createEmptyState('No employees found.', 9);
+            tbody.innerHTML = createEmptyState('No employees found.', PAYROLL_PERIOD_DAYS + 2);
             return;
         }
 
         if (filtered.length === 0) {
-            tbody.innerHTML = createEmptyState('No employees match your search.', 9);
+            tbody.innerHTML = createEmptyState('No employees match your search.', PAYROLL_PERIOD_DAYS + 2);
             return;
         }
 
         filtered.forEach(emp => {
             const tr = document.createElement('tr');
             const nameTd = document.createElement('td');
-            nameTd.innerHTML = `<div><strong>${emp.name}</strong><br><small style="color:#64748b">${emp.role}</small></div>`;
+            nameTd.innerHTML = `<div class="weekly-employee-cell"><strong>${escapeHTML(emp.name)}</strong><small>${escapeHTML(emp.role)}</small></div>`;
             tr.appendChild(nameTd);
 
-            let weeklyTotal = 0;
+            const weeklyTotal = getEmployeeWeekTotal(emp);
             currentDates.forEach(dayInfo => {
                 const td = document.createElement('td');
                 const log = emp.workLogs.find(item => item.date === dayInfo.dateStr);
-                if (log) weeklyTotal += getEffectiveLogAmount(emp, log);
 
-                const natureText = log && log.description ? log.description.replace('Work: ', '') : 'Set nature';
+                const isLocked = Boolean(app.isPayrollDateLocked(dayInfo.dateStr) || app.isLogLocked(log));
+                const isSetNature = !(log && log.description);
+                const natureText = isLocked && log
+                    ? 'Reimbursed'
+                    : (log && log.description ? log.description.replace('Work: ', '') : 'Set nature');
                 td.innerHTML = `
-                    <div style="display:flex; flex-direction:column; align-items:center; gap:0.35rem;">
-                        <button class="btn btn-secondary" style="padding:0.25rem 0.45rem; font-size:0.72rem;"
-                            onclick="app.openDTRModal('${emp.id}', '${dayInfo.dateStr}')">
+                    <div class="weekly-work-cell">
+                        <button class="work-chip ${isLocked ? 'btn-reimbursed' : (isSetNature ? 'btn-set-nature' : 'btn-secondary')}"
+                            onclick="app.openDTRModal('${emp.id}', '${dayInfo.dateStr}')" ${isLocked ? 'disabled' : ''}>
                             ${natureText}
                         </button>
                     </div>
@@ -973,8 +1755,7 @@ const app = {
             });
 
             const totalTd = document.createElement('td');
-            totalTd.style.fontWeight = '800';
-            totalTd.style.color = 'var(--success)';
+            totalTd.className = 'weekly-total-cell';
             totalTd.innerText = formatCurrency(weeklyTotal);
             tr.appendChild(totalTd);
             tbody.appendChild(tr);
@@ -1004,13 +1785,14 @@ const app = {
 
         emp.workLogs.forEach(log => {
             const tr = document.createElement('tr');
+            const isLocked = app.isLogLocked(log);
             tr.innerHTML = `
                 <td>${formatDisplayDate(log.date)}</td>
-                <td>${log.description}</td>
+                <td>${escapeHTML(log.description)} ${isLocked ? '<span class="status-chip status-paid log-status-chip">Reimbursed</span>' : ''}</td>
                 <td>${formatCurrency(getEffectiveLogAmount(emp, log))}</td>
                 <td>
-                    <button class="btn btn-delete" style="padding:0.35rem 0.55rem;" onclick="app.deleteWorkLog('${emp.id}', '${log.id}')">
-                        <i class="fa-solid fa-trash"></i>
+                    <button class="btn ${isLocked ? 'btn-locked' : 'btn-delete'}" style="padding:0.35rem 0.55rem;" onclick="app.deleteWorkLog('${emp.id}', '${log.id}')" ${isLocked ? 'disabled' : ''}>
+                        <i class="fa-solid ${isLocked ? 'fa-lock' : 'fa-trash'}"></i>
                     </button>
                 </td>
             `;
