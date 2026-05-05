@@ -39,7 +39,8 @@ const STORAGE_KEYS = {
     settings: 'payflow_settings',
     isLoggedIn: 'payflow_is_logged_in',
     currentAdminId: 'payflow_current_admin_id',
-    admins: 'payflow_admins'
+    admins: 'payflow_admins',
+    auditLogs: 'payflow_audit_logs'
 };
 
 const SETTINGS_FIELD_CONFIG = {
@@ -76,6 +77,7 @@ const state = {
     employees: [],
     payrollPeriods: [],
     admins: [],
+    auditLogs: [],
     currentView: 'dashboard',
     selectedEmployeeId: null,
     currentWeekStart: null,
@@ -158,6 +160,10 @@ const saveAdminState = () => {
     localStorage.setItem(STORAGE_KEYS.admins, JSON.stringify(state.admins));
 };
 
+const saveAuditState = () => {
+    localStorage.setItem(STORAGE_KEYS.auditLogs, JSON.stringify(state.auditLogs));
+};
+
 const formatCurrency = (amount) => currencyFormatter.format(Number(amount) || 0);
 
 const getWeekNumber = (d) => {
@@ -184,6 +190,14 @@ const getEmployeeStatus = (employee) =>
     employee && employee.status === 'inactive' ? 'inactive' : 'active';
 
 const isEmployeeActive = (employee) => getEmployeeStatus(employee) === 'active';
+
+const normalizeEmployeeName = (value) =>
+    String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+const createBackupFileName = () => {
+    const stamp = new Date().toISOString().slice(0, 10);
+    return `efetebe-payroll-backup-${stamp}.json`;
+};
 
 const parseDateInputValue = (dateStr) => {
     const parts = String(dateStr || '').split('-').map(Number);
@@ -302,6 +316,7 @@ const app = {
         const localPayrollPeriods = JSON.parse(localStorage.getItem(STORAGE_KEYS.payrollPeriods) || '[]');
         const localSettings = JSON.parse(localStorage.getItem(STORAGE_KEYS.settings) || '{}');
         const localAdmins = JSON.parse(localStorage.getItem(STORAGE_KEYS.admins) || '[]');
+        const localAuditLogs = JSON.parse(localStorage.getItem(STORAGE_KEYS.auditLogs) || '[]');
         const storedLoginState = localStorage.getItem(STORAGE_KEYS.isLoggedIn);
         const storedCurrentAdminId = localStorage.getItem(STORAGE_KEYS.currentAdminId);
         let cleanedInvalidReimbursements = false;
@@ -380,6 +395,18 @@ const app = {
                     createdAt: item.createdAt || new Date().toISOString()
                 }))
             : [];
+        state.auditLogs = Array.isArray(localAuditLogs)
+            ? localAuditLogs
+                .filter(item => item && typeof item === 'object' && item.action && item.createdAt)
+                .map(item => ({
+                    id: item.id || generateId(),
+                    action: item.action.toString(),
+                    details: (item.details || '').toString(),
+                    actor: (item.actor || 'System').toString(),
+                    createdAt: item.createdAt
+                }))
+                .slice(0, 250)
+            : [];
 
         state.settings.weeklyPayrollAmount = Math.max(0, Number(state.settings.weeklyPayrollAmount) || 0);
         state.settings.profileName = (state.settings.profileName || 'Admin User').toString().trim() || 'Admin User';
@@ -412,6 +439,20 @@ const app = {
     getCurrentAdmin: () => {
         if (!state.currentAdminId) return null;
         return state.admins.find(admin => admin.id === state.currentAdminId) || null;
+    },
+
+    logAudit: (action, details = '') => {
+        const activeAdmin = app.getCurrentAdmin();
+        state.auditLogs.unshift({
+            id: generateId(),
+            action,
+            details,
+            actor: activeAdmin ? activeAdmin.name : state.settings.profileName || 'System',
+            createdAt: new Date().toISOString()
+        });
+        state.auditLogs = state.auditLogs.slice(0, 250);
+        saveAuditState();
+        if (state.currentView === 'settings') app.renderAuditTrail();
     },
 
     syncActiveAdminProfile: () => {
@@ -542,6 +583,7 @@ const app = {
         saveSessionState();
         form.reset();
         saveState();
+        app.logAudit('Admin login', `${matchedAdmin.name} signed in.`);
         app.navigate('dashboard');
         app.toast(`Welcome back, ${matchedAdmin.name}!`);
     },
@@ -607,6 +649,7 @@ const app = {
         saveSessionState();
         form.reset();
         saveState();
+        app.logAudit('Admin registered', `Created admin account for ${name}.`);
         app.navigate('dashboard');
         app.toast(`Welcome, ${newAdmin.name}! Your admin account is ready.`);
     },
@@ -860,6 +903,7 @@ const app = {
         });
 
         saveState();
+        app.logAudit('Payroll reimbursed', `${summary.label} reimbursed for ${formatCurrency(summary.totalAmount)} across ${summary.logCount} log${summary.logCount === 1 ? '' : 's'}.`);
         app.toast('Current payroll marked as reimbursed and locked.');
     },
 
@@ -887,6 +931,7 @@ const app = {
 
         state.settings.lastUpdatedAt = new Date().toISOString();
         saveState();
+        app.logAudit('Settings updated', `${config.label} changed to ${fieldName === 'weekly-payroll' ? formatCurrency(nextValue) : nextValue}.`);
         if (fieldName === 'profile-name' || fieldName === 'profile-role') {
             app.renderProfileSettings();
         } else {
@@ -907,6 +952,87 @@ const app = {
     resetProfileSettingsForm: () => {
         app.renderProfileSettings();
         app.toast('Profile form reset.');
+    },
+
+    getBackupPayload: () => ({
+        app: 'efetebe-payroll',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        employees: state.employees,
+        payrollPeriods: state.payrollPeriods,
+        settings: state.settings,
+        admins: state.admins,
+        auditLogs: state.auditLogs
+    }),
+
+    exportBackup: () => {
+        app.logAudit('Backup exported', `Exported ${state.employees.length} employee record${state.employees.length === 1 ? '' : 's'}.`);
+        const payload = app.getBackupPayload();
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = createBackupFileName();
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        app.toast('Backup file exported.');
+    },
+
+    openImportBackupPicker: () => {
+        const input = document.getElementById('backup-import-input');
+        if (!input) return;
+        input.value = '';
+        input.click();
+    },
+
+    importBackup: async (event) => {
+        const input = event.target;
+        const file = input && input.files ? input.files[0] : null;
+        if (!file) return;
+
+        try {
+            const text = await file.text();
+            const payload = JSON.parse(text);
+
+            if (!payload || payload.app !== 'efetebe-payroll') {
+                throw new Error('This is not an EFETEBE payroll backup file.');
+            }
+
+            if (!Array.isArray(payload.employees) || !Array.isArray(payload.payrollPeriods) || !Array.isArray(payload.admins)) {
+                throw new Error('Backup file is missing required payroll data.');
+            }
+
+            const confirmed = confirm(`Import backup from ${payload.exportedAt ? formatDateTime(payload.exportedAt) : file.name}?\n\nThis replaces current employees, payroll history, settings, admin accounts, and audit logs.`);
+            if (!confirmed) return;
+
+            const previousAdmin = app.getCurrentAdmin();
+            state.employees = payload.employees;
+            state.payrollPeriods = payload.payrollPeriods;
+            state.settings = { ...state.settings, ...(payload.settings || {}) };
+            state.admins = payload.admins;
+            state.auditLogs = Array.isArray(payload.auditLogs) ? payload.auditLogs.slice(0, 250) : [];
+
+            const restoredAdmin = previousAdmin
+                ? state.admins.find(admin => admin.username === previousAdmin.username)
+                : null;
+            const fallbackAdmin = state.admins[0] || null;
+            state.currentAdminId = restoredAdmin ? restoredAdmin.id : (fallbackAdmin ? fallbackAdmin.id : null);
+            state.isLoggedIn = Boolean(state.currentAdminId);
+
+            saveAdminState();
+            saveAuditState();
+            saveSessionState();
+            saveState();
+            app.logAudit('Backup imported', `Imported backup file ${file.name}.`);
+            app.toast('Backup imported successfully.');
+            app.navigate(state.isLoggedIn ? 'settings' : 'dashboard');
+        } catch (error) {
+            app.toast(error.message || 'Backup import failed.');
+        } finally {
+            if (input) input.value = '';
+        }
     },
 
     sanitizePhoneInput: (input) => {
@@ -931,6 +1057,7 @@ const app = {
         if (offcanvasEl && window.bootstrap && bootstrap.Offcanvas) {
             bootstrap.Offcanvas.getOrCreateInstance(offcanvasEl).hide();
         }
+        app.logAudit('Admin logout', 'Signed out of the payroll session.');
         const loginForm = document.querySelector('#auth-login-card form');
         if (loginForm) loginForm.reset();
         app.renderAuth();
@@ -957,6 +1084,30 @@ const app = {
             return;
         }
 
+        const duplicateEmployee = state.employees.find(emp =>
+            normalizeEmployeeName(emp.name) === normalizeEmployeeName(fullName)
+        );
+
+        if (duplicateEmployee) {
+            const wasInactive = !isEmployeeActive(duplicateEmployee);
+            if (wasInactive) {
+                duplicateEmployee.status = 'active';
+                duplicateEmployee.inactiveAt = null;
+                duplicateEmployee.updatedAt = new Date().toISOString();
+                saveState();
+                app.logAudit('Employee reactivated', `${duplicateEmployee.name} was reactivated during duplicate add.`);
+            }
+
+            form.reset();
+            app.closeModal('add-employee-modal');
+            state.selectedEmployeeId = duplicateEmployee.id;
+            app.navigate('details');
+            app.toast(wasInactive
+                ? `${duplicateEmployee.name} was already registered and has been reactivated.`
+                : `${duplicateEmployee.name} is already registered.`);
+            return;
+        }
+
         const dailyRateInput = form['daily-rate'];
         const newEmployee = {
             id: generateId(),
@@ -974,6 +1125,7 @@ const app = {
         };
         state.employees.push(newEmployee);
         saveState();
+        app.logAudit('Employee added', `${newEmployee.name} was added as ${newEmployee.role}.`);
         form.reset();
         app.closeModal('add-employee-modal');
         app.toast('Employee added successfully.');
@@ -1038,6 +1190,7 @@ const app = {
         employee.updatedAt = new Date().toISOString();
 
         saveState();
+        app.logAudit('Employee updated', `${employee.name} profile was updated.`);
         app.closeModal('edit-employee-modal');
         app.toast('Employee updated.');
         if (state.currentView === 'details') {
@@ -1059,6 +1212,7 @@ const app = {
         employee.inactiveAt = nextStatus === 'inactive' ? new Date().toISOString() : null;
         employee.updatedAt = new Date().toISOString();
         saveState();
+        app.logAudit(nextStatus === 'inactive' ? 'Employee marked inactive' : 'Employee reactivated', `${employee.name} is now ${nextStatus}.`);
         app.toast(nextStatus === 'inactive' ? 'Employee marked inactive.' : 'Employee reactivated.');
 
         if (state.currentView === 'details') {
@@ -1106,6 +1260,7 @@ const app = {
         employee.workLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
 
         saveState();
+        app.logAudit('Work log added', `${employee.name} work log added for ${formatDisplayDate(dateStr)}.`);
         form.reset();
         app.closeModal('add-work-modal');
         app.toast('Work log saved.');
@@ -1122,6 +1277,7 @@ const app = {
         if (confirm('Are you sure you want to remove this employee? This action cannot be undone.')) {
             state.employees = state.employees.filter(emp => emp.id !== id);
             saveState();
+            app.logAudit('Employee deleted', `${employee.name} was deleted before payroll history was added.`);
             app.toast('Employee deleted.');
             app.navigate('employees');
         }
@@ -1137,6 +1293,7 @@ const app = {
         }
         employee.workLogs = employee.workLogs.filter(log => log.id !== logId);
         saveState();
+        app.logAudit('Work log deleted', `${employee.name} work log for ${formatDisplayDate(log.date)} was removed.`);
         app.toast('Work log removed.');
         app.renderEmployeeDetails(empId);
     },
@@ -1279,6 +1436,7 @@ const app = {
 
         employee.workLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
         saveState();
+        app.logAudit('DTR saved', `${employee.name} DTR saved for ${formatDisplayDate(dateStr)}.`);
         app.closeModal('add-dtr-modal');
         app.toast('DTR record saved.');
         app.renderWeeklyWork();
@@ -1437,6 +1595,32 @@ const app = {
         if (lastUpdatedEl) lastUpdatedEl.innerText = formatDateTime(state.settings.lastUpdatedAt);
 
         app.setSettingsFieldMode('weekly-payroll', false);
+        app.renderAuditTrail();
+    },
+
+    renderAuditTrail: () => {
+        const tbody = document.getElementById('audit-log-body');
+        const countEl = document.getElementById('audit-count');
+        if (countEl) countEl.innerText = `${state.auditLogs.length} record${state.auditLogs.length === 1 ? '' : 's'}`;
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+        const recentLogs = state.auditLogs.slice(0, 50);
+        if (recentLogs.length === 0) {
+            tbody.innerHTML = createEmptyState('No audit records yet. New activity will appear here.', 4);
+            return;
+        }
+
+        recentLogs.forEach(log => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${escapeHTML(formatDateTime(log.createdAt))}</td>
+                <td><strong>${escapeHTML(log.action)}</strong></td>
+                <td>${escapeHTML(log.details || 'No details')}</td>
+                <td>${escapeHTML(log.actor || 'System')}</td>
+            `;
+            tbody.appendChild(tr);
+        });
     },
 
     renderEmployeeFilters: (selectedRole = '') => {

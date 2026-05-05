@@ -12,6 +12,8 @@ A browser-based payroll and work week DTR tracker for EFETEBE Aqua & Agricultura
 - Payroll totals by week, month, and employee
 - Reimbursement locking for completed payroll periods
 - Inactive employee handling that preserves payroll history while blocking new DTR entries
+- JSON backup export/import for browser-stored data
+- Audit trail for key payroll, employee, settings, and backup actions
 - Printable payroll summary export
 - Profile and work day amount settings
 

@@ -1321,6 +1321,26 @@ td {
     font-size: 0.9rem;
 }
 
+.audit-panel {
+    grid-column: 1 / -1;
+}
+
+.audit-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.audit-table-container {
+    max-height: 360px;
+    overflow: auto;
+}
+
+.audit-table-container td {
+    vertical-align: top;
+}
+
 .field-note {
     display: block;
     margin-top: 0.35rem;

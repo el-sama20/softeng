@@ -481,6 +481,44 @@
                             <i class="fa-solid fa-right-from-bracket"></i> Log Out
                         </button>
                     </div>
+
+                    <div class="settings-panel">
+                        <h2>Data Backup</h2>
+                        <p>Export a JSON backup or import a previously exported payroll file.</p>
+                        <div class="settings-actions">
+                            <button type="button" class="btn btn-primary" onclick="app.exportBackup()">
+                                <i class="fa-solid fa-download"></i> Export Backup
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="app.openImportBackupPicker()">
+                                <i class="fa-solid fa-upload"></i> Import Backup
+                            </button>
+                            <input id="backup-import-input" type="file" accept="application/json,.json" hidden onchange="app.importBackup(event)">
+                        </div>
+                        <small class="field-note">Import replaces employees, payroll periods, settings, admins, and audit logs with the selected backup file.</small>
+                    </div>
+
+                    <div class="settings-panel audit-panel">
+                        <div class="audit-panel-head">
+                            <div>
+                                <h2>Audit Trail</h2>
+                                <p>Recent system activity saved on this browser.</p>
+                            </div>
+                            <span id="audit-count" class="status-chip status-pending">0 records</span>
+                        </div>
+                        <div class="table-container audit-table-container">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Action</th>
+                                        <th>Details</th>
+                                        <th>By</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="audit-log-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </section>
 
