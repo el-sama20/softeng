@@ -302,7 +302,6 @@ const getPageSubtitle = (viewId) => {
     return '';
 };
 
-// --- App Controller ---
 const app = {
     init: async () => {
         state.currentWeekStart = getPayrollWeekStart(new Date());
@@ -1499,7 +1498,6 @@ const app = {
         saveState();
     },
 
-    // --- Rendering ---
     render: () => {
         app.renderProfile();
         app.renderAuth();

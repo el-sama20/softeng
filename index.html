@@ -293,15 +293,15 @@
                             <span id="weekly-period-state" class="status-chip status-pending">Current period</span>
                         </div>
                         <div class="weekly-range-row">
-                            <button id="weekly-prev-btn" type="button" class="weekly-nav-btn" onclick="app.changeWeek(-1)" aria-label="Previous payroll week">
-                                <i class="fa-solid fa-chevron-left"></i>
-                            </button>
+                                <button id="weekly-prev-btn" type="button" class="weekly-nav-btn" onclick="app.changeWeek(-1)" aria-label="Previous payroll week">
+                                
+                                </button>
                             <div class="weekly-range-copy">
                                 <h2 id="weekly-date-range">...</h2>
                                 <p id="weekly-date-caption">Sunday-Friday payroll. Friday salary day; Saturday rest day.</p>
                             </div>
                             <button id="weekly-next-btn" type="button" class="weekly-nav-btn" onclick="app.changeWeek(1)" aria-label="Next payroll week">
-                                <i class="fa-solid fa-chevron-right"></i>
+                    
                             </button>
                         </div>
                     </div>
@@ -323,7 +323,7 @@
                         </div>
                         <div class="search-container weekly-search">
                             <i class="fa-solid fa-magnifying-glass"></i>
-                            <input class="form-control" type="text" placeholder="Search in payroll week..." oninput="app.renderWeeklyWork()" id="weekly-search">
+                            <input class="form-control" type="text" placeholder="Search employees..." oninput="app.renderWeeklyWork()" id="weekly-search">
                         </div>
                     </div>
                 </div>
