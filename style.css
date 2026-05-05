@@ -1156,6 +1156,21 @@ td {
     white-space: nowrap;
 }
 
+.row-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    white-space: nowrap;
+}
+
+.details-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+}
+
 .btn {
     border: none;
     border-radius: 10px;
@@ -1189,6 +1204,12 @@ td {
     border: 1px solid #bbf7d0;
 }
 
+.btn-inactive {
+    background: #fff7ed;
+    color: #9a3412;
+    border: 1px solid #fed7aa;
+}
+
 .btn-locked {
     background: #e2e8f0;
     color: #64748b;
@@ -1209,6 +1230,21 @@ td {
 .btn-delete {
     color: var(--danger);
     background: #fef2f2;
+}
+
+.employee-status-chip {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.status-active {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.status-inactive {
+    background: #f1f5f9;
+    color: #475569;
 }
 
 .btn-back {
@@ -1391,6 +1427,10 @@ td {
 
 .modal.active {
     display: flex;
+}
+
+body.modal-open {
+    overflow: hidden;
 }
 
 .modal-content {
@@ -1589,10 +1629,14 @@ td {
 .close {
     width: 34px;
     height: 34px;
+    border: 0;
     border-radius: 8px;
+    background: transparent;
+    color: #334155;
     display: grid;
     place-items: center;
     font-size: 1.3rem;
+    line-height: 1;
     cursor: pointer;
     transition: background-color 0.16s;
 }

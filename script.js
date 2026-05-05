@@ -80,6 +80,8 @@ const state = {
     selectedEmployeeId: null,
     currentWeekStart: null,
     currentAdminId: null,
+    activeModalId: null,
+    lastFocusedElement: null,
     isLoggedIn: true,
     authView: 'login',
     authNotice: {
@@ -177,6 +179,11 @@ const escapeHTML = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => 
 }[char]));
 
 const isValidMobileNumber = (value) => /^09\d{9}$/.test(value);
+
+const getEmployeeStatus = (employee) =>
+    employee && employee.status === 'inactive' ? 'inactive' : 'active';
+
+const isEmployeeActive = (employee) => getEmployeeStatus(employee) === 'active';
 
 const parseDateInputValue = (dateStr) => {
     const parts = String(dateStr || '').split('-').map(Number);
@@ -286,6 +293,7 @@ const app = {
     init: async () => {
         state.currentWeekStart = getPayrollWeekStart(new Date());
         await app.loadInitialData();
+        app.bindModalEvents();
         app.render();
     },
 
@@ -313,6 +321,8 @@ const app = {
                     role: (item.role || 'Worker').toString().trim(),
                     contact: (item.contact || '').toString().trim(),
                     address: (item.address || '').toString().trim(),
+                    status: item.status === 'inactive' ? 'inactive' : 'active',
+                    inactiveAt: item.status === 'inactive' ? item.inactiveAt || null : null,
                     workLogs: Array.isArray(item.workLogs)
                         ? item.workLogs.map(log => {
                             const hasValidReimbursement = Boolean(log.reimbursed && isValidReimbursementDate(log.reimbursedAt));
@@ -449,6 +459,42 @@ const app = {
         if (loginCardEl) loginCardEl.classList.toggle('active', activeAuthView === 'login');
         if (registerCardEl) registerCardEl.classList.toggle('active', activeAuthView === 'register');
         app.setAuthNotice(state.authNotice.message, state.authNotice.type);
+    },
+
+    bindModalEvents: () => {
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('mousedown', (event) => {
+                if (event.target === modal) app.closeModal(modal.id);
+            });
+        });
+
+        document.addEventListener('keydown', (event) => {
+            const activeModal = state.activeModalId ? document.getElementById(state.activeModalId) : null;
+            if (!activeModal || !activeModal.classList.contains('active')) return;
+
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                app.closeModal(activeModal.id);
+                return;
+            }
+
+            if (event.key !== 'Tab') return;
+            const focusable = Array.from(activeModal.querySelectorAll(
+                'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+            )).filter(el => el.offsetParent !== null);
+
+            if (focusable.length === 0) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
     },
 
     togglePasswordVisibility: (inputId, button) => {
@@ -629,7 +675,15 @@ const app = {
 
     openModal: (modalId) => {
         const modal = document.getElementById(modalId);
-        if (modal) modal.classList.add('active');
+        if (!modal) return;
+
+        state.lastFocusedElement = document.activeElement;
+        state.activeModalId = modalId;
+        modal.classList.add('active');
+        document.body.classList.add('modal-open');
+
+        const focusTarget = modal.querySelector('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])');
+        if (focusTarget) focusTarget.focus();
     },
 
     openProfileSettingsModal: () => {
@@ -639,7 +693,15 @@ const app = {
 
     closeModal: (modalId) => {
         const modal = document.getElementById(modalId);
-        if (modal) modal.classList.remove('active');
+        if (!modal) return;
+
+        modal.classList.remove('active');
+        if (state.activeModalId === modalId) state.activeModalId = null;
+        if (!document.querySelector('.modal.active')) document.body.classList.remove('modal-open');
+
+        if (state.lastFocusedElement && typeof state.lastFocusedElement.focus === 'function') {
+            state.lastFocusedElement.focus();
+        }
     },
 
     // --- Actions ---
@@ -904,6 +966,8 @@ const app = {
             role: form.role.value.trim(),
             contact: contactInput.value.trim(),
             address: form.address.value.trim(),
+            status: 'active',
+            inactiveAt: null,
             dailyRate: dailyRateInput ? parseFloat(dailyRateInput.value) || 0 : getConfiguredWorkAmount(),
             joinedDate: new Date().toISOString(),
             workLogs: []
@@ -921,6 +985,89 @@ const app = {
         app.navigate('details');
     },
 
+    openEditEmployeeModal: (id) => {
+        const employee = state.employees.find(emp => emp.id === id);
+        const modal = document.getElementById('edit-employee-modal');
+        if (!employee || !modal) return;
+
+        const form = modal.querySelector('form');
+        if (!form) return;
+
+        form['edit-employee-id'].value = employee.id;
+        form['first-name'].value = employee.firstName || '';
+        form['last-name'].value = employee.lastName || '';
+        form.role.value = employee.role || '';
+        form.contact.value = employee.contact || '';
+        form.address.value = employee.address || '';
+        app.sanitizePhoneInput(form.contact);
+        app.openModal('edit-employee-modal');
+    },
+
+    handleEditEmployee: (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const employee = state.employees.find(emp => emp.id === form['edit-employee-id'].value);
+        if (!employee) {
+            app.toast('Employee record was not found.');
+            return;
+        }
+
+        const contactInput = form.contact;
+        const firstName = form['first-name'].value.trim();
+        const lastName = form['last-name'].value.trim();
+        const fullName = [firstName, lastName].filter(Boolean).join(' ');
+        app.sanitizePhoneInput(contactInput);
+
+        if (!firstName || !lastName) {
+            app.toast('Enter both first name and last name.');
+            return;
+        }
+
+        if (!isValidMobileNumber(contactInput.value.trim())) {
+            contactInput.reportValidity();
+            app.toast('Contact number must be 11 digits and start with 09.');
+            return;
+        }
+
+        employee.firstName = firstName;
+        employee.lastName = lastName;
+        employee.name = fullName;
+        employee.role = form.role.value.trim();
+        employee.contact = contactInput.value.trim();
+        employee.address = form.address.value.trim();
+        employee.updatedAt = new Date().toISOString();
+
+        saveState();
+        app.closeModal('edit-employee-modal');
+        app.toast('Employee updated.');
+        if (state.currentView === 'details') {
+            app.renderEmployeeDetails(employee.id);
+        } else {
+            app.renderEmployeeList();
+        }
+    },
+
+    toggleEmployeeStatus: (id) => {
+        const employee = state.employees.find(emp => emp.id === id);
+        if (!employee) return;
+
+        const nextStatus = isEmployeeActive(employee) ? 'inactive' : 'active';
+        const actionLabel = nextStatus === 'inactive' ? 'mark this employee inactive' : 'reactivate this employee';
+        if (!confirm(`Are you sure you want to ${actionLabel}?`)) return;
+
+        employee.status = nextStatus;
+        employee.inactiveAt = nextStatus === 'inactive' ? new Date().toISOString() : null;
+        employee.updatedAt = new Date().toISOString();
+        saveState();
+        app.toast(nextStatus === 'inactive' ? 'Employee marked inactive.' : 'Employee reactivated.');
+
+        if (state.currentView === 'details') {
+            app.renderEmployeeDetails(employee.id);
+        } else {
+            app.renderEmployeeList();
+        }
+    },
+
     handleAddWorkLog: (e) => {
         e.preventDefault();
         const form = e.target;
@@ -928,6 +1075,10 @@ const app = {
         const employee = state.employees.find(emp => emp.id === empId);
 
         if (!employee) return;
+        if (!isEmployeeActive(employee)) {
+            app.toast('Inactive employees cannot receive new work logs. Reactivate the employee first.');
+            return;
+        }
         const dateStr = form.date.value;
 
         if (isRestDay(dateStr)) {
@@ -937,6 +1088,11 @@ const app = {
 
         if (app.isPayrollDateLocked(dateStr)) {
             app.toast('This payroll period is reimbursed and locked.');
+            return;
+        }
+
+        if (employee.workLogs.some(log => log.date === dateStr)) {
+            app.toast('This employee already has a work log for that date. Edit it in Work Week DTR.');
             return;
         }
 
@@ -1006,11 +1162,18 @@ const app = {
         const dateInput = document.getElementById('dtr-date');
         if (!modal || !empSelect || !dateInput) return;
 
-        empSelect.innerHTML = state.employees
-            .map(emp => `<option value="${emp.id}">${emp.name} (${emp.role})</option>`)
+        const activeEmployees = state.employees.filter(isEmployeeActive);
+        if (activeEmployees.length === 0) {
+            app.toast('No active employees available for DTR.');
+            return;
+        }
+
+        empSelect.innerHTML = activeEmployees
+            .map(emp => `<option value="${escapeHTML(emp.id)}">${escapeHTML(emp.name)} (${escapeHTML(emp.role)})</option>`)
             .join('');
 
-        const defaultEmpId = empId || (state.employees[0] ? state.employees[0].id : '');
+        const requestedEmployee = activeEmployees.find(emp => emp.id === empId);
+        const defaultEmpId = requestedEmployee ? requestedEmployee.id : activeEmployees[0].id;
         const defaultDate = dateStr || formatDate(new Date());
 
         if (isRestDay(defaultDate)) {
@@ -1076,6 +1239,10 @@ const app = {
 
         const employee = state.employees.find(emp => emp.id === empId);
         if (!employee) return;
+        if (!isEmployeeActive(employee)) {
+            app.toast('Inactive employees cannot receive new DTR records. Reactivate the employee first.');
+            return;
+        }
         if (isRestDay(dateStr)) {
             app.toast('Saturday is the rest day and is not included in payroll.');
             return;
@@ -1120,6 +1287,10 @@ const app = {
     toggleWorkType: (empId, dateStr, type) => {
         const employee = state.employees.find(emp => emp.id === empId);
         if (!employee) return;
+        if (!isEmployeeActive(employee)) {
+            app.toast('Inactive employees cannot receive new DTR records. Reactivate the employee first.');
+            return;
+        }
         if (isRestDay(dateStr)) {
             app.toast('Saturday is the rest day and is not included in payroll.');
             return;
@@ -1186,7 +1357,7 @@ const app = {
     },
 
     renderDashboard: () => {
-        const totalEmployees = state.employees.length;
+        const totalEmployees = state.employees.filter(isEmployeeActive).length;
         const weeklyPayroll = getCurrentWeekLogsTotal();
         const monthlyPayroll = getCurrentMonthLogsTotal();
         const recentLogs = [];
@@ -1291,9 +1462,11 @@ const app = {
 
         const searchInput = document.getElementById('employee-search');
         const roleFilter = document.getElementById('employee-role-filter');
+        const statusFilter = document.getElementById('employee-status-filter');
         const sortSelect = document.getElementById('employee-sort');
         const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
         let selectedRole = roleFilter ? roleFilter.value : '';
+        const selectedStatus = statusFilter ? statusFilter.value : 'active';
         const sortMode = sortSelect ? sortSelect.value : 'name-asc';
 
         app.renderEmployeeFilters(selectedRole);
@@ -1307,7 +1480,8 @@ const app = {
                 const matchesSearch = emp.name.toLowerCase().includes(searchTerm) ||
                     emp.role.toLowerCase().includes(searchTerm);
                 const matchesRole = !selectedRole || emp.role === selectedRole;
-                return matchesSearch && matchesRole;
+                const matchesStatus = !selectedStatus || getEmployeeStatus(emp) === selectedStatus;
+                return matchesSearch && matchesRole && matchesStatus;
             })
             .sort((a, b) => {
                 if (sortMode === 'name-desc') return b.name.localeCompare(a.name);
@@ -1318,12 +1492,12 @@ const app = {
             });
 
         if (state.employees.length === 0) {
-            tbody.innerHTML = createEmptyState('No employees yet. Click "Add Employee" to get started.', 6);
+            tbody.innerHTML = createEmptyState('No employees yet. Click "Add Employee" to get started.', 7);
             return;
         }
 
         if (filtered.length === 0) {
-            tbody.innerHTML = createEmptyState('No employees match your current search or filter.', 6);
+            tbody.innerHTML = createEmptyState('No employees match your current search or filter.', 7);
             return;
         }
 
@@ -1336,6 +1510,10 @@ const app = {
 
             const total = getEmployeeTotal(emp);
             const hasPayrollHistory = emp.workLogs.length > 0;
+            const employeeStatus = getEmployeeStatus(emp);
+            const statusLabel = employeeStatus === 'inactive' ? 'Inactive' : 'Active';
+            const statusActionLabel = employeeStatus === 'inactive' ? 'Reactivate' : 'Mark inactive';
+            const statusActionIcon = employeeStatus === 'inactive' ? 'fa-user-check' : 'fa-user-slash';
 
             tr.innerHTML = `
                 <td>
@@ -1349,11 +1527,20 @@ const app = {
                 <td>${escapeHTML(emp.role)}</td>
                 <td>${escapeHTML(emp.contact || 'N/A')}</td>
                 <td>${escapeHTML(emp.address || 'N/A')}</td>
+                <td><span class="status-chip employee-status-chip status-${employeeStatus}">${statusLabel}</span></td>
                 <td class="employee-list-total">${formatCurrency(total)}</td>
                 <td>
-                    <button class="btn ${hasPayrollHistory ? 'btn-locked' : 'btn-delete'}" onclick="app.deleteEmployee('${emp.id}')" ${hasPayrollHistory ? 'disabled' : ''} title="${hasPayrollHistory ? 'Locked because this employee has payroll history' : 'Delete employee'}">
+                    <div class="row-actions">
+                        <button type="button" class="btn btn-secondary" onclick="app.openEditEmployeeModal('${emp.id}')" title="Edit employee" aria-label="Edit ${escapeHTML(emp.name)}">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="app.toggleEmployeeStatus('${emp.id}')" title="${statusActionLabel}" aria-label="${statusActionLabel} ${escapeHTML(emp.name)}">
+                            <i class="fa-solid ${statusActionIcon}"></i>
+                        </button>
+                        <button type="button" class="btn ${hasPayrollHistory ? 'btn-locked' : 'btn-delete'}" onclick="app.deleteEmployee('${emp.id}')" ${hasPayrollHistory ? 'disabled' : ''} title="${hasPayrollHistory ? 'Locked because this employee has payroll history' : 'Delete employee'}" aria-label="${hasPayrollHistory ? 'Employee locked' : `Delete ${escapeHTML(emp.name)}`}">
                         <i class="fa-solid ${hasPayrollHistory ? 'fa-lock' : 'fa-trash'}"></i>
-                    </button>
+                        </button>
+                    </div>
                 </td>
             `;
             tbody.appendChild(tr);
@@ -1856,7 +2043,8 @@ const app = {
 
         const searchInput = document.getElementById('weekly-search');
         const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
-        const filtered = state.employees.filter(emp =>
+        const activeEmployees = state.employees.filter(isEmployeeActive);
+        const filtered = activeEmployees.filter(emp =>
             emp.name.toLowerCase().includes(searchTerm) || emp.role.toLowerCase().includes(searchTerm)
         );
 
@@ -1876,6 +2064,11 @@ const app = {
 
         if (state.employees.length === 0) {
             tbody.innerHTML = createEmptyState('No employees found.', PAYROLL_PERIOD_DAYS + 2);
+            return;
+        }
+
+        if (activeEmployees.length === 0) {
+            tbody.innerHTML = createEmptyState('No active employees found. Reactivate an employee before adding DTR records.', PAYROLL_PERIOD_DAYS + 2);
             return;
         }
 
@@ -1925,9 +2118,28 @@ const app = {
 
         document.getElementById('detail-name').innerText = emp.name;
         document.getElementById('detail-role').innerText = emp.role;
+        const employeeStatus = getEmployeeStatus(emp);
+        const isActive = employeeStatus === 'active';
+        const detailStatusEl = document.getElementById('detail-status');
+        if (detailStatusEl) detailStatusEl.innerText = `Status: ${isActive ? 'Active' : 'Inactive'}`;
         document.getElementById('detail-contact').innerText = `Contact: ${emp.contact || 'N/A'}`;
         document.getElementById('detail-address').innerText = `Address: ${emp.address || 'N/A'}`;
         document.getElementById('detail-daily-rate').innerText = formatCurrency(getConfiguredWorkAmount(emp));
+
+        const statusActionBtn = document.getElementById('detail-status-action');
+        if (statusActionBtn) {
+            statusActionBtn.innerHTML = isActive
+                ? '<i class="fa-solid fa-user-slash"></i> Mark Inactive'
+                : '<i class="fa-solid fa-user-check"></i> Reactivate';
+            statusActionBtn.classList.toggle('btn-inactive', isActive);
+            statusActionBtn.classList.toggle('btn-success-soft', !isActive);
+        }
+
+        const logWorkBtn = document.getElementById('detail-log-work-btn');
+        if (logWorkBtn) {
+            logWorkBtn.disabled = !isActive;
+            logWorkBtn.title = isActive ? 'Log work for this employee' : 'Reactivate this employee before logging new work.';
+        }
 
         const total = emp.workLogs.reduce((sum, log) => sum + getEffectiveLogAmount(emp, log), 0);
         document.getElementById('detail-total-earnings').innerText = formatCurrency(total);

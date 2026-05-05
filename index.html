@@ -200,7 +200,7 @@
                     <div class="stat-card">
                         <div class="stat-icon bg-blue"><i class="fa-solid fa-users"></i></div>
                         <div class="stat-info">
-                            <h3>Total Employees</h3>
+                            <h3>Active Employees</h3>
                             <p id="dash-total-employees">0</p>
                         </div>
                     </div>
@@ -253,6 +253,11 @@
                         <select id="employee-role-filter" class="filter-select" onchange="app.renderEmployeeList()" aria-label="Filter employees by role">
                             <option value="">All roles</option>
                         </select>
+                        <select id="employee-status-filter" class="filter-select" onchange="app.renderEmployeeList()" aria-label="Filter employees by status">
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                            <option value="">All statuses</option>
+                        </select>
                         <select id="employee-sort" class="filter-select" onchange="app.renderEmployeeList()" aria-label="Sort employees">
                             <option value="name-asc">Name A-Z</option>
                             <option value="name-desc">Name Z-A</option>
@@ -270,6 +275,7 @@
                                 <th>Role</th>
                                 <th>Contact</th>
                                 <th>Address</th>
+                                <th>Status</th>
                                 <th>Total Earnings</th>
                                 <th>Actions</th>
                             </tr>
@@ -487,8 +493,17 @@
                     <div class="details-info">
                         <h2 id="detail-name">Employee Name</h2>
                         <p id="detail-role">Role</p>
+                        <p id="detail-status">Status: Active</p>
                         <p id="detail-contact">Contact: </p>
                         <p id="detail-address">Address: </p>
+                        <div class="details-actions">
+                            <button type="button" class="btn btn-secondary" onclick="app.openEditEmployeeModal(state.selectedEmployeeId)">
+                                <i class="fa-solid fa-pen"></i> Edit Employee
+                            </button>
+                            <button type="button" id="detail-status-action" class="btn btn-secondary" onclick="app.toggleEmployeeStatus(state.selectedEmployeeId)">
+                                <i class="fa-solid fa-user-slash"></i> Mark Inactive
+                            </button>
+                        </div>
                     </div>
                     <div class="details-stats">
                         <div class="mini-stat">
@@ -503,7 +518,7 @@
                 <div class="work-log-section">
                     <div class="section-header">
                         <h3>Work Logs</h3>
-                        <button class="btn btn-secondary" onclick="app.openModal('add-work-modal')">
+                        <button id="detail-log-work-btn" class="btn btn-secondary" onclick="app.openModal('add-work-modal')">
                             <i class="fa-solid fa-pen-to-square"></i> Log Work
                         </button>
                     </div>
@@ -525,11 +540,11 @@
         </main>
     </div>
 
-    <div id="add-employee-modal" class="modal">
+    <div id="add-employee-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="add-employee-title">
         <div class="modal-content form-modal-content">
             <div class="modal-header">
-                <h2>Add New Employee</h2>
-                <span class="close" onclick="app.closeModal('add-employee-modal')">&times;</span>
+                <h2 id="add-employee-title">Add New Employee</h2>
+                <button type="button" class="close" onclick="app.closeModal('add-employee-modal')" aria-label="Close add employee modal">&times;</button>
             </div>
             <form onsubmit="app.handleAddEmployee(event)">
                 <div class="form-row">
@@ -561,11 +576,47 @@
         </div>
     </div>
 
-    <div id="add-work-modal" class="modal">
+    <div id="edit-employee-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-employee-title">
         <div class="modal-content form-modal-content">
             <div class="modal-header">
-                <h2>Log Work Day</h2>
-                <span class="close" onclick="app.closeModal('add-work-modal')">&times;</span>
+                <h2 id="edit-employee-title">Edit Employee</h2>
+                <button type="button" class="close" onclick="app.closeModal('edit-employee-modal')" aria-label="Close edit employee modal">&times;</button>
+            </div>
+            <form onsubmit="app.handleEditEmployee(event)">
+                <input type="hidden" id="edit-employee-id" name="edit-employee-id">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit-employee-first-name">First Name</label>
+                        <input id="edit-employee-first-name" class="form-control" type="text" name="first-name" autocomplete="given-name" required placeholder="e.g. Juan">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-employee-last-name">Last Name</label>
+                        <input id="edit-employee-last-name" class="form-control" type="text" name="last-name" autocomplete="family-name" required placeholder="e.g. Dela Cruz">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="edit-employee-role">Position/Role</label>
+                    <input id="edit-employee-role" class="form-control" type="text" name="role" required placeholder="e.g. Carpenter">
+                </div>
+                <div class="form-group">
+                    <label for="edit-employee-contact">Contact Number</label>
+                    <input id="edit-employee-contact" class="form-control" type="tel" name="contact" inputmode="numeric" autocomplete="tel" required minlength="11" maxlength="11" pattern="09[0-9]{9}" title="Enter an 11-digit mobile number that starts with 09." oninput="app.sanitizePhoneInput(this)" placeholder="e.g. 09123456789">
+                    <small class="field-note">Use an 11-digit Philippine mobile number starting with 09.</small>
+                </div>
+                <div class="form-group">
+                    <label for="edit-employee-address">Address</label>
+                    <input id="edit-employee-address" class="form-control" type="text" name="address" autocomplete="street-address" required placeholder="e.g. Purok 1, Barangay 2, City">
+                </div>
+                <button type="submit" class="btn btn-primary full-width">Save Changes</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="add-work-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="add-work-title">
+        <div class="modal-content form-modal-content">
+            <div class="modal-header">
+                <h2 id="add-work-title">Log Work Day</h2>
+                <button type="button" class="close" onclick="app.closeModal('add-work-modal')" aria-label="Close work log modal">&times;</button>
             </div>
             <form onsubmit="app.handleAddWorkLog(event)">
                 <input type="hidden" id="log-employee-id">
@@ -587,7 +638,7 @@
         </div>
     </div>
 
-    <div id="profile-settings-modal" class="modal">
+    <div id="profile-settings-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="profile-settings-title">
         <div class="modal-content profile-modal-content">
             <div class="profile-modal-banner">
                 <button type="button" class="modal-close" onclick="app.closeModal('profile-settings-modal')" aria-label="Close profile settings">
@@ -598,7 +649,7 @@
                 </div>
                 <div class="profile-modal-title">
                     <span>Account Profile</span>
-                    <h2>Profile Settings</h2>
+                    <h2 id="profile-settings-title">Profile Settings</h2>
                     <p>Edit the name and role shown in the top profile badge.</p>
                 </div>
             </div>
@@ -637,11 +688,11 @@
         </div>
     </div>
 
-    <div id="add-dtr-modal" class="modal">
+    <div id="add-dtr-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="add-dtr-title">
         <div class="modal-content dtr-modal-content">
             <div class="modal-header">
-                <h2>Add DTR Record</h2>
-                <span class="close" onclick="app.closeModal('add-dtr-modal')">&times;</span>
+                <h2 id="add-dtr-title">Add DTR Record</h2>
+                <button type="button" class="close" onclick="app.closeModal('add-dtr-modal')" aria-label="Close DTR modal">&times;</button>
             </div>
             <form onsubmit="app.handleAddDTRRecord(event)">
                 <div class="form-group">
