@@ -247,7 +247,8 @@
                     </button>
                     <div class="search-container">
                         <i class="fa-solid fa-magnifying-glass"></i>
-                        <input class="form-control" type="text" placeholder="Search employees..." oninput="app.renderEmployeeList()" id="employee-search">
+                        <input class="form-control" type="text" placeholder="Search employees or roles
+                        ..." oninput="app.renderEmployeeList()" id="employee-search">
                     </div>
                     <div class="employee-controls">
                         <select id="employee-role-filter" class="filter-select" onchange="app.renderEmployeeList()" aria-label="Filter employees by role">
@@ -293,16 +294,10 @@
                             <span id="weekly-period-state" class="status-chip status-pending">Current period</span>
                         </div>
                         <div class="weekly-range-row">
-                                <button id="weekly-prev-btn" type="button" class="weekly-nav-btn" onclick="app.changeWeek(-1)" aria-label="Previous payroll week">
-                                
-                                </button>
                             <div class="weekly-range-copy">
                                 <h2 id="weekly-date-range">...</h2>
                                 <p id="weekly-date-caption">Sunday-Friday payroll. Friday salary day; Saturday rest day.</p>
                             </div>
-                            <button id="weekly-next-btn" type="button" class="weekly-nav-btn" onclick="app.changeWeek(1)" aria-label="Next payroll week">
-                    
-                            </button>
                         </div>
                     </div>
 
@@ -323,7 +318,7 @@
                         </div>
                         <div class="search-container weekly-search">
                             <i class="fa-solid fa-magnifying-glass"></i>
-                            <input class="form-control" type="text" placeholder="Search employees..." oninput="app.renderWeeklyWork()" id="weekly-search">
+                            <input class="form-control" type="text" placeholder="Search employees or roles..." oninput="app.renderWeeklyWork()" id="weekly-search">
                         </div>
                     </div>
                 </div>
@@ -347,9 +342,23 @@
                             <p id="payroll-grand-total">PHP 0.00</p>
                         </div>
                     </div>
-                    <button type="button" class="btn btn-primary payroll-export-btn" onclick="app.exportPayrollPDF()">
-                        <i class="fa-solid fa-file-pdf"></i> Export Total PDF
-                    </button>
+                    <div class="dropdown payroll-export-btn">
+                        <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa-solid fa-file-export"></i> Export
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end payroll-export-menu">
+                            <li>
+                                <button type="button" class="dropdown-item" onclick="app.exportPayrollPDF()">
+                                    <i class="fa-solid fa-file-pdf"></i> PDF
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item" onclick="app.exportPayrollCSV()">
+                                    <i class="fa-solid fa-file-csv"></i> CSV
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
                 <div class="payroll-period-panel">
                     <div class="payroll-period-main">
@@ -386,9 +395,15 @@
                         </div>
                         <div class="payroll-history-filter" onclick="event.stopPropagation()">
                             <label for="payroll-history-filter">View</label>
-                            <select id="payroll-history-filter" class="filter-select" onchange="app.renderPayrollHistory()" aria-label="Filter payroll history">
+                            <select id="payroll-history-filter" class="filter-select" onchange="app.renderPayrollHistory(true)" aria-label="Filter payroll history">
                                 <option value="weekly">Weekly</option>
                                 <option value="monthly">Monthly</option>
+                            </select>
+                        </div>
+                        <div class="payroll-history-filter payroll-history-period-filter" onclick="event.stopPropagation()">
+                            <label for="payroll-history-period-filter">Period</label>
+                            <select id="payroll-history-period-filter" class="filter-select" onchange="app.renderPayrollHistory()" aria-label="Select payroll history period">
+                                <option value="all">All weeks</option>
                             </select>
                         </div>
                         <span class="payroll-history-toggle" aria-hidden="true">
@@ -608,8 +623,11 @@
                     <label for="employee-address">Address</label>
                     <input id="employee-address" class="form-control" type="text" name="address" autocomplete="street-address" required placeholder="e.g. Purok 1, Barangay 2, City">
                 </div>
-                
-                <button type="submit" class="btn btn-primary full-width">Create Employee</button>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa-solid fa-user-plus"></i> Create Employee
+                    </button>
+                </div>
             </form>
         </div>
     </div>
@@ -645,7 +663,11 @@
                     <label for="edit-employee-address">Address</label>
                     <input id="edit-employee-address" class="form-control" type="text" name="address" autocomplete="street-address" required placeholder="e.g. Purok 1, Barangay 2, City">
                 </div>
-                <button type="submit" class="btn btn-primary full-width">Save Changes</button>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa-solid fa-floppy-disk"></i> Save Changes
+                    </button>
+                </div>
             </form>
         </div>
     </div>
@@ -671,7 +693,11 @@
                     <input type="text" value="Auto-applied from Settings" disabled class="disabled-input">
                     <small>Uses Work Day Amount from Settings when configured.</small>
                 </div>
-                <button type="submit" class="btn btn-primary full-width">Save Work Log</button>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa-solid fa-floppy-disk"></i> Save Work Log
+                    </button>
+                </div>
             </form>
         </div>
     </div>
@@ -718,7 +744,7 @@
                         <input id="settings-profile-role" class="form-control" type="text" name="profile-role" required placeholder="e.g. Payroll Admin">
                     </div>
                 </div>
-                <div class="settings-actions profile-modal-actions">
+                <div class="modal-actions profile-modal-actions">
                     <button type="button" class="btn btn-secondary" onclick="app.resetProfileSettingsForm()">Reset</button>
                     <button type="button" class="btn btn-primary" onclick="app.closeModal('profile-settings-modal')">Done</button>
                 </div>
@@ -743,15 +769,14 @@
                 </div>
                 <div class="form-group">
                     <label>Nature of Work</label>
-                    <div class="nature-grid" id="nature-grid">
-                        <label class="nature-option"><input type="checkbox" name="nature" value="Carpenter"><span>Carpenter</span></label>
-                        <label class="nature-option"><input type="checkbox" name="nature" value="Sugarcane Farmer"><span>Sugarcane Farmer</span></label>
-                        <label class="nature-option"><input type="checkbox" name="nature" value="Harvester"><span>Harvester</span></label>
-                        <label class="nature-option"><input type="checkbox" name="nature" value="Field Worker"><span>Field Worker</span></label>
-                    </div>
+                    <div class="nature-grid" id="nature-grid"></div>
                 </div>
                 <small class="dtr-note">Sunday-Friday earnings are auto-calculated. Friday is salary day; Saturday is rest day.</small>
-                <button type="submit" class="btn btn-primary full-width" style="margin-top:0.75rem;">Save DTR</button>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa-solid fa-floppy-disk"></i> Save DTR
+                    </button>
+                </div>
             </form>
         </div>
     </div>

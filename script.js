@@ -184,6 +184,21 @@ const escapeHTML = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => 
     "'": '&#39;'
 }[char]));
 
+const getWorkTypesFromDescription = (description) => {
+    const match = String(description || '').match(/^Work:\s*(.*)$/);
+    if (!match || !match[1]) return [];
+    return match[1].split(',').map(item => item.trim()).filter(Boolean);
+};
+
+const renderWorkTypeChips = (workTypes) => workTypes
+    .map(type => `<span class="work-type-pill">${escapeHTML(type)}</span>`)
+    .join('');
+
+const getEmployeeRoleOptions = () => [...new Set(state.employees
+    .map(emp => (emp.role || '').trim())
+    .filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+
 const isValidMobileNumber = (value) => /^09\d{9}$/.test(value);
 
 const getEmployeeStatus = (employee) =>
@@ -197,6 +212,16 @@ const normalizeEmployeeName = (value) =>
 const createBackupFileName = () => {
     const stamp = new Date().toISOString().slice(0, 10);
     return `efetebe-payroll-backup-${stamp}.json`;
+};
+
+const createPayrollExportFileName = (extension) => {
+    const stamp = new Date().toISOString().slice(0, 10);
+    return `efetebe-payroll-summary-${stamp}.${extension}`;
+};
+
+const escapeCSVValue = (value) => {
+    const text = String(value ?? '');
+    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 };
 
 const parseDateInputValue = (dateStr) => {
@@ -1331,6 +1356,8 @@ const app = {
         const requestedEmployee = activeEmployees.find(emp => emp.id === empId);
         const defaultEmpId = requestedEmployee ? requestedEmployee.id : activeEmployees[0].id;
         const defaultDate = dateStr || formatDate(new Date());
+        const roleOptions = getEmployeeRoleOptions();
+        const natureGrid = document.getElementById('nature-grid');
 
         if (isRestDay(defaultDate)) {
             app.toast('Saturday is the rest day and is not included in payroll.');
@@ -1345,18 +1372,23 @@ const app = {
         if (defaultEmpId) empSelect.value = defaultEmpId;
         dateInput.value = defaultDate;
 
-        document.querySelectorAll('#add-dtr-modal input[name="nature"]').forEach(rb => {
-            rb.checked = false;
-        });
+        if (natureGrid) {
+            natureGrid.innerHTML = roleOptions.length
+                ? roleOptions.map(role => `
+                    <label class="nature-option">
+                        <input type="checkbox" name="nature" value="${escapeHTML(role)}">
+                        <span>${escapeHTML(role)}</span>
+                    </label>
+                `).join('')
+                : '<p class="nature-empty">Add employee roles first.</p>';
+        }
 
         const employee = state.employees.find(emp => emp.id === defaultEmpId);
         const existingLog = employee ? employee.workLogs.find(log => log.date === defaultDate) : null;
-        if (existingLog && existingLog.description.startsWith('Work: ')) {
-            const selected = existingLog.description.substring(6);
-            document.querySelectorAll('#add-dtr-modal input[name="nature"]').forEach(rb => {
-                rb.checked = (rb.value === selected);
-            });
-        }
+        const selectedWorkTypes = getWorkTypesFromDescription(existingLog ? existingLog.description : '');
+        document.querySelectorAll('#add-dtr-modal input[name="nature"]').forEach(rb => {
+            rb.checked = selectedWorkTypes.includes(rb.value);
+        });
 
         app.openModal('add-dtr-modal');
     },
@@ -1412,7 +1444,7 @@ const app = {
         let desc = '';
         if (selectedNature.length > 0) {
             rate = getConfiguredWorkAmount(employee);
-            desc = `Work: ${selectedNature[0]}`;
+            desc = `Work: ${selectedNature.join(', ')}`;
         }
 
         const existingLog = employee.workLogs.find(log => log.date === dateStr);
@@ -1465,10 +1497,7 @@ const app = {
         let workTypes = [];
 
         if (log) {
-            const match = log.description.match(/Work: (.*)/);
-            if (match && match[1]) {
-                workTypes = match[1].split(', ');
-            }
+            workTypes = getWorkTypesFromDescription(log.description);
         }
 
         if (workTypes.includes(type)) {
@@ -1625,10 +1654,7 @@ const app = {
         const roleFilter = document.getElementById('employee-role-filter');
         if (!roleFilter) return;
 
-        const roles = [...new Set(state.employees
-            .map(emp => (emp.role || '').trim())
-            .filter(Boolean))]
-            .sort((a, b) => a.localeCompare(b));
+        const roles = getEmployeeRoleOptions();
 
         roleFilter.innerHTML = `
             <option value="">All roles</option>
@@ -1821,6 +1847,55 @@ const app = {
                 };
             })
             .sort((a, b) => b.sortDate - a.sortDate);
+    },
+
+    exportPayrollCSV: () => {
+        const { rows, grandTotal, totalDays } = app.getPayrollSummary();
+        const periodSummary = app.getCurrentPayrollPeriodSummary();
+        const generatedAt = dateTimeFormatter.format(new Date());
+        const activeAdmin = app.getCurrentAdmin();
+        const generatedBy = activeAdmin ? activeAdmin.name : state.settings.profileName;
+        const periodStatus = periodSummary.status === 'reimbursed'
+            ? `Reimbursed${periodSummary.reimbursedAt ? ` on ${formatDateTime(periodSummary.reimbursedAt)}` : ''}`
+            : 'Pending reimbursement';
+
+        const csvRows = [
+            ['EFETEBE AQUA & AGRICULTURAL CORP.'],
+            ['Payroll Summary'],
+            ['Generated', generatedAt],
+            ['Generated by', generatedBy],
+            ['Current period', periodSummary.label],
+            ['Salary day', formatDisplayDate(periodSummary.salaryDate)],
+            ['Period status', periodStatus],
+            [],
+            ['Employee Name', 'Role', 'Days Worked', 'Total Earnings']
+        ];
+
+        if (rows.length) {
+            rows.forEach(row => {
+                csvRows.push([
+                    row.name,
+                    row.role,
+                    row.daysWorked,
+                    Number(row.totalEarnings || 0).toFixed(2)
+                ]);
+            });
+        } else {
+            csvRows.push(['No payroll records found.', '', '', '']);
+        }
+
+        csvRows.push([]);
+        csvRows.push(['Grand Total', '', totalDays, Number(grandTotal || 0).toFixed(2)]);
+
+        const csv = `\uFEFF${csvRows.map(row => row.map(escapeCSVValue).join(',')).join('\r\n')}`;
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = createPayrollExportFileName('csv');
+        link.click();
+        URL.revokeObjectURL(url);
+        app.toast('Payroll CSV exported.');
     },
 
     exportPayrollPDF: () => {
@@ -2055,14 +2130,36 @@ const app = {
         }
     },
 
-    renderPayrollHistory: () => {
+    renderPayrollHistory: (resetPeriodFilter = false) => {
         const weeklyHistory = app.getPayrollHistory();
         const filterEl = document.getElementById('payroll-history-filter');
+        const periodFilterEl = document.getElementById('payroll-history-period-filter');
         const headerRow = document.getElementById('payroll-history-header-row');
         const historyMode = filterEl && filterEl.value === 'monthly' ? 'monthly' : 'weekly';
-        const history = historyMode === 'monthly'
+        const allHistory = historyMode === 'monthly'
             ? app.getMonthlyPayrollHistory(weeklyHistory)
             : weeklyHistory;
+        const periodKey = historyMode === 'monthly' ? 'key' : 'id';
+        const allPeriodLabel = historyMode === 'monthly' ? 'All months' : 'All weeks';
+
+        let selectedPeriod = resetPeriodFilter ? 'all' : (periodFilterEl ? periodFilterEl.value : 'all');
+        if (periodFilterEl) {
+            const hasSelectedPeriod = selectedPeriod === 'all' || allHistory.some(period => period[periodKey] === selectedPeriod);
+            if (!hasSelectedPeriod) selectedPeriod = 'all';
+
+            periodFilterEl.innerHTML = `<option value="all">${allPeriodLabel}</option>`;
+            allHistory.forEach(period => {
+                const option = document.createElement('option');
+                option.value = period[periodKey];
+                option.textContent = period.label;
+                periodFilterEl.appendChild(option);
+            });
+            periodFilterEl.value = selectedPeriod;
+        }
+
+        const history = selectedPeriod === 'all'
+            ? allHistory
+            : allHistory.filter(period => period[periodKey] === selectedPeriod);
         const tbody = document.getElementById('payroll-history-body');
         const totalEl = document.getElementById('payroll-history-total');
         const countEl = document.getElementById('payroll-history-count');
@@ -2271,15 +2368,20 @@ const app = {
                 const log = emp.workLogs.find(item => item.date === dayInfo.dateStr);
 
                 const isLocked = Boolean(app.isPayrollDateLocked(dayInfo.dateStr) || app.isLogLocked(log));
-                const isSetNature = !(log && log.description);
-                const natureText = isLocked && log
+                const workTypes = getWorkTypesFromDescription(log ? log.description : '');
+                const hasWorkTypes = workTypes.length > 0;
+                const isSetNature = !hasWorkTypes;
+                const chipContent = isLocked && log
+                    ? '<span class="work-chip-label">Reimbursed</span>'
+                    : (hasWorkTypes ? renderWorkTypeChips(workTypes) : '<span class="work-chip-label">Set nature</span>');
+                const chipTitle = isLocked && log
                     ? 'Reimbursed'
-                    : (log && log.description ? log.description.replace('Work: ', '') : 'Set nature');
+                    : (hasWorkTypes ? workTypes.join(', ') : 'Set nature');
                 td.innerHTML = `
                     <div class="weekly-work-cell">
                         <button class="work-chip ${isLocked ? 'btn-reimbursed' : (isSetNature ? 'btn-set-nature' : 'btn-secondary')}"
-                            onclick="app.openDTRModal('${emp.id}', '${dayInfo.dateStr}')" ${isLocked ? 'disabled' : ''}>
-                            ${natureText}
+                            onclick="app.openDTRModal('${emp.id}', '${dayInfo.dateStr}')" title="${escapeHTML(chipTitle)}" ${isLocked ? 'disabled' : ''}>
+                            ${chipContent}
                         </button>
                     </div>
                 `;
