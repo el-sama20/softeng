@@ -343,8 +343,8 @@
                         </div>
                     </div>
                     <div class="dropdown payroll-export-btn">
-                        <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fa-solid fa-file-export"></i> Export
+                        <button type="button" id="payroll-export-toggle" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa-solid fa-file-export"></i> <span id="payroll-export-label">Export Week</span>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end payroll-export-menu">
                             <li>
@@ -380,8 +380,8 @@
                     <summary class="payroll-history-head">
                         <div>
                             <span class="panel-eyebrow">Payroll History</span>
-                            <h2>Reimbursed Payroll Periods</h2>
-                            <p>Click to view completed salary releases saved separately from the current payroll.</p>
+                            <h2>Completed Payroll Periods</h2>
+                            <p>Click to view past payroll data saved separately from the current payroll.</p>
                         </div>
                         <div class="payroll-history-summary">
                             <div>
@@ -403,7 +403,7 @@
                         <div class="payroll-history-filter payroll-history-period-filter" onclick="event.stopPropagation()">
                             <label for="payroll-history-period-filter">Period</label>
                             <select id="payroll-history-period-filter" class="filter-select" onchange="app.renderPayrollHistory()" aria-label="Select payroll history period">
-                                <option value="all">All weeks</option>
+                                <option value="latest">Last week</option>
                             </select>
                         </div>
                         <span class="payroll-history-toggle" aria-hidden="true">
@@ -416,9 +416,9 @@
                                 <tr id="payroll-history-header-row">
                                     <th>Payroll Period</th>
                                     <th>Salary Day</th>
-                                    <th>Reimbursed By</th>
-                                    <th>Work Logs</th>
+                                    <th>Status</th>
                                     <th>Total</th>
+                                    <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody id="payroll-history-body"></tbody>

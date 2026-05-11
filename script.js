@@ -314,6 +314,16 @@ const getCurrentMonthLogsTotal = (referenceDate = new Date()) => {
     }, 0);
 };
 
+const getMonthRange = (referenceDate = new Date()) => {
+    const start = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 0);
+    end.setHours(23, 59, 59, 999);
+
+    return { start, end };
+};
+
 const getPageSubtitle = (viewId) => {
     const totalEmployees = state.employees.length;
     const totalLogs = state.employees.reduce((sum, emp) => sum + emp.workLogs.length, 0);
@@ -929,6 +939,145 @@ const app = {
         saveState();
         app.logAudit('Payroll reimbursed', `${summary.label} reimbursed for ${formatCurrency(summary.totalAmount)} across ${summary.logCount} log${summary.logCount === 1 ? '' : 's'}.`);
         app.toast('Current payroll marked as reimbursed and locked.');
+    },
+
+    markPayrollHistoryPeriodReimbursed: (periodId) => {
+        const period = app.getPayrollHistory().find(item => item.id === periodId);
+        if (!period) {
+            app.toast('Payroll period not found.');
+            return;
+        }
+
+        if (period.status === 'reimbursed') {
+            app.toast('This payroll period is already reimbursed.');
+            return;
+        }
+
+        const start = parseDateInputValue(period.startDate);
+        const end = parseDateInputValue(period.endDate);
+        if (!start || !end) {
+            app.toast('Payroll period dates are invalid.');
+            return;
+        }
+
+        const logs = [];
+        state.employees.forEach(employee => {
+            employee.workLogs.forEach(log => {
+                if (!isDateWithinRange(log.date, start, end)) return;
+                logs.push({ employee, log, amount: getEffectiveLogAmount(employee, log) });
+            });
+        });
+
+        if (logs.length === 0) {
+            app.toast('No DTR records found for this payroll period.');
+            return;
+        }
+
+        const totalAmount = logs.reduce((sum, item) => sum + item.amount, 0);
+        const confirmed = confirm(`Mark ${period.label} as reimbursed?\n\nTotal: ${formatCurrency(totalAmount)}\n\nThis will lock these DTR records from future rate changes.`);
+        if (!confirmed) return;
+
+        const reimbursedAt = new Date().toISOString();
+        const activeAdmin = app.getCurrentAdmin();
+        const reimbursedBy = activeAdmin ? activeAdmin.name : state.settings.profileName;
+        const reimbursedPeriod = {
+            id: period.id,
+            type: 'weekly',
+            startDate: period.startDate,
+            endDate: period.endDate,
+            salaryDate: period.salaryDate || period.endDate,
+            totalAmount,
+            logCount: logs.length,
+            status: 'reimbursed',
+            reimbursedAt,
+            reimbursedBy
+        };
+
+        const existingIndex = state.payrollPeriods.findIndex(item => item.id === period.id);
+        if (existingIndex >= 0) {
+            state.payrollPeriods[existingIndex] = reimbursedPeriod;
+        } else {
+            state.payrollPeriods.push(reimbursedPeriod);
+        }
+
+        logs.forEach(({ log }) => {
+            log.reimbursed = true;
+            log.reimbursedAt = reimbursedAt;
+            log.reimbursedBy = reimbursedBy;
+            log.reimbursementPeriodId = period.id;
+        });
+
+        saveState();
+        app.logAudit('Payroll reimbursed', `${period.label} reimbursed for ${formatCurrency(totalAmount)}.`);
+        app.toast('Payroll period marked as reimbursed.');
+    },
+
+    markPayrollHistoryMonthReimbursed: (monthKey) => {
+        const weeklyPeriods = app.getPayrollHistory().filter(period => {
+            if (period.status === 'reimbursed') return false;
+            const basisDate = parseDateInputValue(period.salaryDate || period.endDate || period.startDate);
+            if (!basisDate) return false;
+            const key = `${basisDate.getFullYear()}-${String(basisDate.getMonth() + 1).padStart(2, '0')}`;
+            return key === monthKey;
+        });
+
+        if (weeklyPeriods.length === 0) {
+            app.toast('No unreimbursed payroll periods found for this month.');
+            return;
+        }
+
+        const confirmed = confirm(`Mark ${weeklyPeriods.length} unreimbursed payroll period${weeklyPeriods.length === 1 ? '' : 's'} in this month as reimbursed?`);
+        if (!confirmed) return;
+
+        weeklyPeriods.forEach(period => {
+            const start = parseDateInputValue(period.startDate);
+            const end = parseDateInputValue(period.endDate);
+            if (!start || !end) return;
+
+            const logs = [];
+            state.employees.forEach(employee => {
+                employee.workLogs.forEach(log => {
+                    if (!isDateWithinRange(log.date, start, end)) return;
+                    logs.push({ employee, log, amount: getEffectiveLogAmount(employee, log) });
+                });
+            });
+            if (logs.length === 0) return;
+
+            const reimbursedAt = new Date().toISOString();
+            const activeAdmin = app.getCurrentAdmin();
+            const reimbursedBy = activeAdmin ? activeAdmin.name : state.settings.profileName;
+            const totalAmount = logs.reduce((sum, item) => sum + item.amount, 0);
+            const reimbursedPeriod = {
+                id: period.id,
+                type: 'weekly',
+                startDate: period.startDate,
+                endDate: period.endDate,
+                salaryDate: period.salaryDate || period.endDate,
+                totalAmount,
+                logCount: logs.length,
+                status: 'reimbursed',
+                reimbursedAt,
+                reimbursedBy
+            };
+
+            const existingIndex = state.payrollPeriods.findIndex(item => item.id === period.id);
+            if (existingIndex >= 0) {
+                state.payrollPeriods[existingIndex] = reimbursedPeriod;
+            } else {
+                state.payrollPeriods.push(reimbursedPeriod);
+            }
+
+            logs.forEach(({ log }) => {
+                log.reimbursed = true;
+                log.reimbursedAt = reimbursedAt;
+                log.reimbursedBy = reimbursedBy;
+                log.reimbursementPeriodId = period.id;
+            });
+        });
+
+        saveState();
+        app.logAudit('Payroll reimbursed', `${weeklyPeriods.length} payroll period${weeklyPeriods.length === 1 ? '' : 's'} marked reimbursed from monthly history.`);
+        app.toast('Monthly payroll periods marked as reimbursed.');
     },
 
     updateSettingsField: (fieldName) => {
@@ -1773,23 +1922,114 @@ const app = {
         };
     },
 
-    getPayrollHistory: () => state.payrollPeriods
-        .filter(period => period.status === 'reimbursed')
-        .map(period => {
+    getPayrollSummaryForRange: (start, end) => {
+        const rows = state.employees.map(emp => {
+            const logs = emp.workLogs.filter(log => isDateWithinRange(log.date, start, end));
+            const totalEarnings = logs.reduce((sum, log) => sum + getEffectiveLogAmount(emp, log), 0);
+            return {
+                name: emp.name,
+                role: emp.role,
+                daysWorked: logs.length,
+                totalEarnings
+            };
+        });
+
+        return {
+            rows,
+            grandTotal: rows.reduce((sum, row) => sum + row.totalEarnings, 0),
+            totalDays: rows.reduce((sum, row) => sum + row.daysWorked, 0)
+        };
+    },
+
+    getPayrollExportMode: () => {
+        const filterEl = document.getElementById('payroll-history-filter');
+        return filterEl && filterEl.value === 'monthly' ? 'monthly' : 'weekly';
+    },
+
+    updatePayrollExportLabel: () => {
+        const labelEl = document.getElementById('payroll-export-label');
+        if (!labelEl) return;
+        labelEl.innerText = app.getPayrollExportMode() === 'monthly' ? 'Export Month' : 'Export Week';
+    },
+
+    getCurrentPayrollExportSummary: () => {
+        const mode = app.getPayrollExportMode();
+        const now = new Date();
+        const { start, end } = mode === 'monthly' ? getMonthRange(now) : getWeekRange(now);
+        const summary = app.getPayrollSummaryForRange(start, end);
+        const weeklyPeriod = app.getCurrentPayrollPeriodSummary();
+
+        return {
+            ...summary,
+            mode,
+            title: mode === 'monthly' ? 'Current Month Payroll Summary' : 'Current Week Payroll Summary',
+            periodLabel: mode === 'monthly' ? monthFormatter.format(start) : formatWeekRangeLabel(start, end),
+            rangeLabel: mode === 'monthly'
+                ? `${formatDisplayDate(formatDate(start))} - ${formatDisplayDate(formatDate(end))}`
+                : weeklyPeriod.label,
+            salaryDay: mode === 'weekly' ? weeklyPeriod.salaryDate : null,
+            periodStatus: mode === 'weekly'
+                ? (weeklyPeriod.status === 'reimbursed'
+                    ? `Reimbursed${weeklyPeriod.reimbursedAt ? ` on ${formatDateTime(weeklyPeriod.reimbursedAt)}` : ''}`
+                    : 'Pending reimbursement')
+                : 'Current calendar month'
+        };
+    },
+
+    getPayrollHistory: () => {
+        const historyById = new Map();
+
+        state.payrollPeriods
+            .filter(period => period.status === 'reimbursed')
+            .forEach(period => {
             const start = parseDateInputValue(period.startDate);
             const end = parseDateInputValue(period.endDate);
-            return {
+            historyById.set(period.id, {
                 ...period,
                 label: start && end ? formatWeekRangeLabel(start, end) : `${period.startDate} - ${period.endDate}`,
                 totalAmount: Number(period.totalAmount) || 0,
-                logCount: Number(period.logCount) || 0
-            };
-        })
+                logCount: Number(period.logCount) || 0,
+                status: 'reimbursed'
+            });
+        });
+
+        state.employees.forEach(employee => {
+            employee.workLogs.forEach(log => {
+                const logDate = parseDateInputValue(log.date);
+                if (!logDate || !isPastPayrollPeriod(logDate)) return;
+
+                const { start, end } = getWeekRange(logDate);
+                const id = getPayrollPeriodId(start, end);
+                if (!historyById.has(id)) {
+                    historyById.set(id, {
+                        id,
+                        type: 'weekly',
+                        startDate: formatDate(start),
+                        endDate: formatDate(end),
+                        salaryDate: formatDate(end),
+                        label: formatWeekRangeLabel(start, end),
+                        totalAmount: 0,
+                        logCount: 0,
+                        status: 'unreimbursed',
+                        reimbursedAt: null,
+                        reimbursedBy: ''
+                    });
+                }
+
+                const period = historyById.get(id);
+                if (period.status === 'reimbursed') return;
+                period.totalAmount += getEffectiveLogAmount(employee, log);
+                period.logCount += 1;
+            });
+        });
+
+        return Array.from(historyById.values())
         .sort((a, b) => {
-            const dateA = new Date(a.reimbursedAt || a.salaryDate || a.endDate || 0);
-            const dateB = new Date(b.reimbursedAt || b.salaryDate || b.endDate || 0);
+            const dateA = new Date(a.salaryDate || a.endDate || a.reimbursedAt || 0);
+            const dateB = new Date(b.salaryDate || b.endDate || b.reimbursedAt || 0);
             return dateB - dateA;
-        }),
+        });
+    },
 
     getMonthlyPayrollHistory: (weeklyHistory = app.getPayrollHistory()) => {
         const groups = new Map();
@@ -1813,7 +2053,8 @@ const app = {
                     earliestStart: periodStart,
                     latestEnd: periodEnd,
                     latestReimbursedAt: reimbursedAt,
-                    admins: new Set()
+                    admins: new Set(),
+                    reimbursedCount: 0
                 });
             }
 
@@ -1821,6 +2062,7 @@ const app = {
             group.totalAmount += Number(period.totalAmount) || 0;
             group.logCount += Number(period.logCount) || 0;
             group.periodCount += 1;
+            if (period.status === 'reimbursed') group.reimbursedCount += 1;
             if (period.reimbursedBy) group.admins.add(period.reimbursedBy);
             if (periodStart && (!group.earliestStart || periodStart < group.earliestStart)) group.earliestStart = periodStart;
             if (periodEnd && (!group.latestEnd || periodEnd > group.latestEnd)) group.latestEnd = periodEnd;
@@ -1830,6 +2072,12 @@ const app = {
         return Array.from(groups.values())
             .map(group => {
                 const admins = Array.from(group.admins);
+                const status = group.reimbursedCount === group.periodCount
+                    ? (admins.length <= 1 ? (admins[0] || 'Reimbursed') : `${admins.length} admins`)
+                    : (group.reimbursedCount > 0 ? 'Partly reimbursed' : 'Not reimbursed yet');
+                const statusClass = group.reimbursedCount === group.periodCount
+                    ? 'history-status-paid'
+                    : 'history-status-warning';
                 const coveredRange = group.earliestStart && group.latestEnd
                     ? `${shortDateFormatter.format(group.earliestStart)} - ${shortDateFormatter.format(group.latestEnd)}`
                     : 'No covered dates';
@@ -1841,7 +2089,8 @@ const app = {
                     totalAmount: group.totalAmount,
                     logCount: group.logCount,
                     periodCount: group.periodCount,
-                    reimbursedBy: admins.length <= 1 ? (admins[0] || 'Admin') : `${admins.length} admins`,
+                    reimbursedBy: status,
+                    statusClass,
                     latestReimbursedAt: group.latestReimbursedAt ? group.latestReimbursedAt.toISOString() : null,
                     sortDate: group.monthStart
                 };
@@ -1850,22 +2099,19 @@ const app = {
     },
 
     exportPayrollCSV: () => {
-        const { rows, grandTotal, totalDays } = app.getPayrollSummary();
-        const periodSummary = app.getCurrentPayrollPeriodSummary();
+        const { rows, grandTotal, totalDays, title, periodLabel, rangeLabel, salaryDay, periodStatus } = app.getCurrentPayrollExportSummary();
         const generatedAt = dateTimeFormatter.format(new Date());
         const activeAdmin = app.getCurrentAdmin();
         const generatedBy = activeAdmin ? activeAdmin.name : state.settings.profileName;
-        const periodStatus = periodSummary.status === 'reimbursed'
-            ? `Reimbursed${periodSummary.reimbursedAt ? ` on ${formatDateTime(periodSummary.reimbursedAt)}` : ''}`
-            : 'Pending reimbursement';
 
         const csvRows = [
             ['EFETEBE AQUA & AGRICULTURAL CORP.'],
-            ['Payroll Summary'],
+            [title],
             ['Generated', generatedAt],
             ['Generated by', generatedBy],
-            ['Current period', periodSummary.label],
-            ['Salary day', formatDisplayDate(periodSummary.salaryDate)],
+            ['Current period', periodLabel],
+            ['Covered dates', rangeLabel],
+            ['Salary day', salaryDay ? formatDisplayDate(salaryDay) : 'N/A'],
             ['Period status', periodStatus],
             [],
             ['Employee Name', 'Role', 'Days Worked', 'Total Earnings']
@@ -1895,18 +2141,14 @@ const app = {
         link.download = createPayrollExportFileName('csv');
         link.click();
         URL.revokeObjectURL(url);
-        app.toast('Payroll CSV exported.');
+        app.toast(`${title} CSV exported.`);
     },
 
     exportPayrollPDF: () => {
-        const { rows, grandTotal, totalDays } = app.getPayrollSummary();
-        const periodSummary = app.getCurrentPayrollPeriodSummary();
+        const { rows, grandTotal, totalDays, title, periodLabel, rangeLabel, salaryDay, periodStatus } = app.getCurrentPayrollExportSummary();
         const generatedAt = dateTimeFormatter.format(new Date());
         const activeAdmin = app.getCurrentAdmin();
         const generatedBy = activeAdmin ? activeAdmin.name : state.settings.profileName;
-        const periodStatus = periodSummary.status === 'reimbursed'
-            ? `Reimbursed${periodSummary.reimbursedAt ? ` on ${formatDateTime(periodSummary.reimbursedAt)}` : ''}`
-            : 'Pending reimbursement';
 
         const rowsMarkup = rows.length
             ? rows.map(row => `
@@ -2036,14 +2278,15 @@ const app = {
                     <section class="header">
                         <div>
                             <div class="eyebrow">EFETEBE AQUA & AGRICULTURAL CORP.</div>
-                            <h1>Payroll Summary</h1>
-                            <p>Employee totals and grand total payroll report.</p>
+                            <h1>${escapeHTML(title)}</h1>
+                            <p>Employee totals for the selected current payroll period.</p>
                         </div>
                         <div class="meta">
                             <div><strong>Generated:</strong> ${escapeHTML(generatedAt)}</div>
                             <div><strong>Generated by:</strong> ${escapeHTML(generatedBy)}</div>
-                            <div><strong>Current period:</strong> ${escapeHTML(periodSummary.label)}</div>
-                            <div><strong>Salary day:</strong> ${escapeHTML(formatDisplayDate(periodSummary.salaryDate))}</div>
+                            <div><strong>Current period:</strong> ${escapeHTML(periodLabel)}</div>
+                            <div><strong>Covered dates:</strong> ${escapeHTML(rangeLabel)}</div>
+                            <div><strong>Salary day:</strong> ${escapeHTML(salaryDay ? formatDisplayDate(salaryDay) : 'N/A')}</div>
                             <div><strong>Period status:</strong> ${escapeHTML(periodStatus)}</div>
                         </div>
                     </section>
@@ -2086,7 +2329,7 @@ const app = {
         reportWindow.document.close();
         reportWindow.focus();
         setTimeout(() => reportWindow.print(), 250);
-        app.toast('Payroll PDF report opened.');
+        app.toast(`${title} PDF report opened.`);
     },
 
     renderCurrentPayrollPeriod: () => {
@@ -2136,18 +2379,25 @@ const app = {
         const periodFilterEl = document.getElementById('payroll-history-period-filter');
         const headerRow = document.getElementById('payroll-history-header-row');
         const historyMode = filterEl && filterEl.value === 'monthly' ? 'monthly' : 'weekly';
+        app.updatePayrollExportLabel();
         const allHistory = historyMode === 'monthly'
             ? app.getMonthlyPayrollHistory(weeklyHistory)
             : weeklyHistory;
         const periodKey = historyMode === 'monthly' ? 'key' : 'id';
         const allPeriodLabel = historyMode === 'monthly' ? 'All months' : 'All weeks';
+        const latestPeriodLabel = historyMode === 'monthly' ? 'Last month' : 'Last week';
+        
 
-        let selectedPeriod = resetPeriodFilter ? 'all' : (periodFilterEl ? periodFilterEl.value : 'all');
+        let selectedPeriod = resetPeriodFilter ? 'latest' : (periodFilterEl ? periodFilterEl.value : 'latest');
         if (periodFilterEl) {
-            const hasSelectedPeriod = selectedPeriod === 'all' || allHistory.some(period => period[periodKey] === selectedPeriod);
-            if (!hasSelectedPeriod) selectedPeriod = 'all';
+            const hasSelectedPeriod = ['latest', 'all'].includes(selectedPeriod) || allHistory.some(period => period[periodKey] === selectedPeriod);
+            if (!hasSelectedPeriod) selectedPeriod = 'latest';
 
-            periodFilterEl.innerHTML = `<option value="all">${allPeriodLabel}</option>`;
+            periodFilterEl.innerHTML = `
+            <option value="all">${allPeriodLabel}</option>
+                <option value="latest">${latestPeriodLabel}</option>
+                
+            `;
             allHistory.forEach(period => {
                 const option = document.createElement('option');
                 option.value = period[periodKey];
@@ -2157,9 +2407,11 @@ const app = {
             periodFilterEl.value = selectedPeriod;
         }
 
-        const history = selectedPeriod === 'all'
-            ? allHistory
-            : allHistory.filter(period => period[periodKey] === selectedPeriod);
+        const history = selectedPeriod === 'latest'
+            ? allHistory.slice(0, 1)
+            : (selectedPeriod === 'all'
+                ? allHistory
+                : allHistory.filter(period => period[periodKey] === selectedPeriod));
         const tbody = document.getElementById('payroll-history-body');
         const totalEl = document.getElementById('payroll-history-total');
         const countEl = document.getElementById('payroll-history-count');
@@ -2174,16 +2426,16 @@ const app = {
                 ? `
                     <th>Payroll Month</th>
                     <th>Covered Dates</th>
-                    <th>Released By</th>
-                    <th>Work Logs</th>
+                    <th>Status</th>
                     <th>Total</th>
+                    <th>Action</th>
                 `
                 : `
                     <th>Payroll Period</th>
                     <th>Salary Day</th>
-                    <th>Reimbursed By</th>
-                    <th>Work Logs</th>
+                    <th>Status</th>
                     <th>Total</th>
+                    <th>Action</th>
                 `;
         }
         if (!tbody) return;
@@ -2191,8 +2443,8 @@ const app = {
         if (history.length === 0) {
             tbody.innerHTML = createEmptyState(
                 historyMode === 'monthly'
-                    ? 'No monthly history yet. Reimbursed weekly payrolls will be grouped by month here.'
-                    : 'No reimbursed payroll history yet. Mark a Friday payroll as reimbursed to save it here.',
+                    ? 'No monthly payroll history yet. Weeks with DTR records will appear here, even before reimbursement.'
+                    : 'No payroll history yet. Past payroll weeks with DTR records will appear here.',
                 5
             );
             return;
@@ -2202,30 +2454,40 @@ const app = {
         history.forEach(period => {
             const tr = document.createElement('tr');
             if (historyMode === 'monthly') {
+                const canMarkMonthly = period.statusClass === 'history-status-warning';
                 tr.innerHTML = `
                     <td>
                         <div class="history-period-cell">
                             <strong>${escapeHTML(period.label)}</strong>
-                            <small>${period.periodCount} reimbursed week${period.periodCount === 1 ? '' : 's'}</small>
+                            <small>${period.periodCount} completed week${period.periodCount === 1 ? '' : 's'}</small>
                         </div>
                     </td>
                     <td>${escapeHTML(period.coveredRange)}</td>
-                    <td>${escapeHTML(period.reimbursedBy)}</td>
-                    <td>${period.logCount} log${period.logCount === 1 ? '' : 's'}</td>
+                    <td><span class="history-status ${period.statusClass || 'history-status-warning'}">${escapeHTML(period.reimbursedBy)}</span></td>
                     <td>${escapeHTML(formatCurrency(period.totalAmount))}</td>
+                    <td>
+                        ${canMarkMonthly
+                            ? `<button type="button" class="btn btn-success-soft history-action-btn" onclick="app.markPayrollHistoryMonthReimbursed('${period.key}')">Mark reimbursed</button>`
+                            : '<span class="history-action-done">Done</span>'}
+                    </td>
                 `;
             } else {
+                const canMarkWeekly = period.status !== 'reimbursed';
                 tr.innerHTML = `
                     <td>
                         <div class="history-period-cell">
                             <strong>${escapeHTML(period.label)}</strong>
-                            <small>${period.reimbursedAt ? `Reimbursed ${escapeHTML(formatDateTime(period.reimbursedAt))}` : 'Reimbursed'}</small>
+                            <small>${period.reimbursedAt ? `Reimbursed ${escapeHTML(formatDateTime(period.reimbursedAt))}` : 'Not marked reimbursed yet'}</small>
                         </div>
                     </td>
                     <td>${escapeHTML(formatDisplayDate(period.salaryDate || period.endDate))}</td>
-                    <td>${escapeHTML(period.reimbursedBy || 'Admin')}</td>
-                    <td>${period.logCount} log${period.logCount === 1 ? '' : 's'}</td>
+                    <td><span class="history-status ${period.status === 'reimbursed' ? 'history-status-paid' : 'history-status-warning'}">${escapeHTML(period.status === 'reimbursed' ? (period.reimbursedBy || 'Reimbursed') : 'Not reimbursed yet')}</span></td>
                     <td>${escapeHTML(formatCurrency(period.totalAmount))}</td>
+                    <td>
+                        ${canMarkWeekly
+                            ? `<button type="button" class="btn btn-success-soft history-action-btn" onclick="app.markPayrollHistoryPeriodReimbursed('${period.id}')">Mark reimbursed</button>`
+                            : '<span class="history-action-done">Done</span>'}
+                    </td>
                 `;
             }
             tbody.appendChild(tr);
