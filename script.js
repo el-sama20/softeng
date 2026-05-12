@@ -214,9 +214,13 @@ const createBackupFileName = () => {
     return `efetebe-payroll-backup-${stamp}.json`;
 };
 
-const createPayrollExportFileName = (extension) => {
+const createPayrollExportFileName = (extension, descriptor = 'summary') => {
     const stamp = new Date().toISOString().slice(0, 10);
-    return `efetebe-payroll-summary-${stamp}.${extension}`;
+    const safeDescriptor = String(descriptor || 'summary')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'summary';
+    return `efetebe-payroll-${safeDescriptor}-${stamp}.${extension}`;
 };
 
 const escapeCSVValue = (value) => {
@@ -1948,8 +1952,26 @@ const app = {
 
     updatePayrollExportLabel: () => {
         const labelEl = document.getElementById('payroll-export-label');
-        if (!labelEl) return;
-        labelEl.innerText = app.getPayrollExportMode() === 'monthly' ? 'Export Month' : 'Export Week';
+        const historyLabelEl = document.getElementById('payroll-history-export-label');
+        const filterEl = document.getElementById('payroll-history-filter');
+        const periodFilterEl = document.getElementById('payroll-history-period-filter');
+        const mode = app.getPayrollExportMode();
+
+        if (labelEl) {
+            labelEl.innerText = mode === 'monthly' ? 'Export Current Month' : 'Export Current Week';
+        }
+
+        if (historyLabelEl) {
+            const historyMode = filterEl && filterEl.value === 'monthly' ? 'monthly' : 'weekly';
+            const selectedPeriod = periodFilterEl ? periodFilterEl.value : 'latest';
+            if (selectedPeriod === 'all') {
+                historyLabelEl.innerText = 'Export All History';
+            } else if (selectedPeriod === 'latest') {
+                historyLabelEl.innerText = historyMode === 'monthly' ? 'Export Last Month' : 'Export Last Week';
+            } else {
+                historyLabelEl.innerText = 'Export Selected';
+            }
+        }
     },
 
     getCurrentPayrollExportSummary: () => {
@@ -1972,7 +1994,9 @@ const app = {
                 ? (weeklyPeriod.status === 'reimbursed'
                     ? `Reimbursed${weeklyPeriod.reimbursedAt ? ` on ${formatDateTime(weeklyPeriod.reimbursedAt)}` : ''}`
                     : 'Pending reimbursement')
-                : 'Current calendar month'
+                : 'Current calendar month',
+            fileDescriptor: mode === 'monthly' ? 'current-month-summary' : 'current-week-summary',
+            description: 'Employee totals for the selected current payroll period.'
         };
     },
 
@@ -2083,6 +2107,7 @@ const app = {
                     : 'No covered dates';
 
                 return {
+                    key: group.key,
                     type: 'monthly',
                     label: monthFormatter.format(group.monthStart),
                     coveredRange,
@@ -2098,8 +2123,78 @@ const app = {
             .sort((a, b) => b.sortDate - a.sortDate);
     },
 
-    exportPayrollCSV: () => {
-        const { rows, grandTotal, totalDays, title, periodLabel, rangeLabel, salaryDay, periodStatus } = app.getCurrentPayrollExportSummary();
+    getSelectedPayrollHistoryExportSummary: () => {
+        const weeklyHistory = app.getPayrollHistory();
+        const filterEl = document.getElementById('payroll-history-filter');
+        const periodFilterEl = document.getElementById('payroll-history-period-filter');
+        const mode = filterEl && filterEl.value === 'monthly' ? 'monthly' : 'weekly';
+        const allHistory = mode === 'monthly'
+            ? app.getMonthlyPayrollHistory(weeklyHistory)
+            : weeklyHistory;
+        const periodKey = mode === 'monthly' ? 'key' : 'id';
+        let selectedPeriod = periodFilterEl ? periodFilterEl.value : 'latest';
+
+        if (!['latest', 'all'].includes(selectedPeriod) && !allHistory.some(period => period[periodKey] === selectedPeriod)) {
+            selectedPeriod = 'latest';
+        }
+
+        const history = selectedPeriod === 'latest'
+            ? allHistory.slice(0, 1)
+            : (selectedPeriod === 'all'
+                ? allHistory
+                : allHistory.filter(period => period[periodKey] === selectedPeriod));
+
+        if (!history.length) return null;
+
+        const starts = history
+            .map(period => mode === 'monthly' ? period.earliestStart : parseDateInputValue(period.startDate))
+            .filter(Boolean);
+        const ends = history
+            .map(period => mode === 'monthly' ? period.latestEnd : parseDateInputValue(period.endDate))
+            .filter(Boolean);
+        const start = starts.length ? new Date(Math.min(...starts.map(date => date.getTime()))) : null;
+        const end = ends.length ? new Date(Math.max(...ends.map(date => date.getTime()))) : null;
+        const fallbackSummary = {
+            rows: [],
+            grandTotal: history.reduce((sum, period) => sum + (Number(period.totalAmount) || 0), 0),
+            totalDays: history.reduce((sum, period) => sum + (Number(period.logCount) || 0), 0)
+        };
+        const summary = start && end ? app.getPayrollSummaryForRange(start, end) : fallbackSummary;
+        const isSinglePeriod = history.length === 1;
+        const firstPeriod = history[0];
+        const periodLabel = isSinglePeriod
+            ? firstPeriod.label
+            : (mode === 'monthly' ? `${history.length} payroll months` : `${history.length} payroll weeks`);
+        const rangeLabel = start && end
+            ? `${formatDisplayDate(formatDate(start))} - ${formatDisplayDate(formatDate(end))}`
+            : 'Selected payroll history';
+        const salaryDay = mode === 'weekly' && isSinglePeriod ? firstPeriod.salaryDate : null;
+        const periodStatus = isSinglePeriod
+            ? (mode === 'monthly'
+                ? firstPeriod.reimbursedBy
+                : (firstPeriod.status === 'reimbursed'
+                    ? `Reimbursed${firstPeriod.reimbursedAt ? ` on ${formatDateTime(firstPeriod.reimbursedAt)}` : ''}`
+                    : 'Not reimbursed yet'))
+            : 'Selected history periods';
+        const title = mode === 'monthly'
+            ? 'Payroll History Monthly Summary'
+            : 'Payroll History Weekly Summary';
+
+        return {
+            ...summary,
+            mode,
+            title,
+            periodLabel,
+            rangeLabel,
+            salaryDay,
+            periodStatus,
+            fileDescriptor: mode === 'monthly' ? 'monthly-history' : 'weekly-history',
+            description: 'Employee totals for the selected payroll history period.'
+        };
+    },
+
+    exportPayrollSummaryCSV: (summary) => {
+        const { rows, grandTotal, totalDays, title, periodLabel, rangeLabel, salaryDay, periodStatus, fileDescriptor } = summary;
         const generatedAt = dateTimeFormatter.format(new Date());
         const activeAdmin = app.getCurrentAdmin();
         const generatedBy = activeAdmin ? activeAdmin.name : state.settings.profileName;
@@ -2138,14 +2233,27 @@ const app = {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = createPayrollExportFileName('csv');
+        link.download = createPayrollExportFileName('csv', fileDescriptor);
         link.click();
         URL.revokeObjectURL(url);
         app.toast(`${title} CSV exported.`);
     },
 
-    exportPayrollPDF: () => {
-        const { rows, grandTotal, totalDays, title, periodLabel, rangeLabel, salaryDay, periodStatus } = app.getCurrentPayrollExportSummary();
+    exportPayrollCSV: () => {
+        app.exportPayrollSummaryCSV(app.getCurrentPayrollExportSummary());
+    },
+
+    exportPayrollHistoryCSV: () => {
+        const summary = app.getSelectedPayrollHistoryExportSummary();
+        if (!summary) {
+            app.toast('No payroll history to export.');
+            return;
+        }
+        app.exportPayrollSummaryCSV(summary);
+    },
+
+    exportPayrollSummaryPDF: (summary) => {
+        const { rows, grandTotal, totalDays, title, periodLabel, rangeLabel, salaryDay, periodStatus, description } = summary;
         const generatedAt = dateTimeFormatter.format(new Date());
         const activeAdmin = app.getCurrentAdmin();
         const generatedBy = activeAdmin ? activeAdmin.name : state.settings.profileName;
@@ -2279,12 +2387,12 @@ const app = {
                         <div>
                             <div class="eyebrow">EFETEBE AQUA & AGRICULTURAL CORP.</div>
                             <h1>${escapeHTML(title)}</h1>
-                            <p>Employee totals for the selected current payroll period.</p>
+                            <p>${escapeHTML(description || 'Employee totals for the selected payroll period.')}</p>
                         </div>
                         <div class="meta">
                             <div><strong>Generated:</strong> ${escapeHTML(generatedAt)}</div>
                             <div><strong>Generated by:</strong> ${escapeHTML(generatedBy)}</div>
-                            <div><strong>Current period:</strong> ${escapeHTML(periodLabel)}</div>
+                            <div><strong>Payroll period:</strong> ${escapeHTML(periodLabel)}</div>
                             <div><strong>Covered dates:</strong> ${escapeHTML(rangeLabel)}</div>
                             <div><strong>Salary day:</strong> ${escapeHTML(salaryDay ? formatDisplayDate(salaryDay) : 'N/A')}</div>
                             <div><strong>Period status:</strong> ${escapeHTML(periodStatus)}</div>
@@ -2330,6 +2438,19 @@ const app = {
         reportWindow.focus();
         setTimeout(() => reportWindow.print(), 250);
         app.toast(`${title} PDF report opened.`);
+    },
+
+    exportPayrollPDF: () => {
+        app.exportPayrollSummaryPDF(app.getCurrentPayrollExportSummary());
+    },
+
+    exportPayrollHistoryPDF: () => {
+        const summary = app.getSelectedPayrollHistoryExportSummary();
+        if (!summary) {
+            app.toast('No payroll history to export.');
+            return;
+        }
+        app.exportPayrollSummaryPDF(summary);
     },
 
     renderCurrentPayrollPeriod: () => {
@@ -2379,7 +2500,6 @@ const app = {
         const periodFilterEl = document.getElementById('payroll-history-period-filter');
         const headerRow = document.getElementById('payroll-history-header-row');
         const historyMode = filterEl && filterEl.value === 'monthly' ? 'monthly' : 'weekly';
-        app.updatePayrollExportLabel();
         const allHistory = historyMode === 'monthly'
             ? app.getMonthlyPayrollHistory(weeklyHistory)
             : weeklyHistory;
@@ -2406,6 +2526,7 @@ const app = {
             });
             periodFilterEl.value = selectedPeriod;
         }
+        app.updatePayrollExportLabel();
 
         const history = selectedPeriod === 'latest'
             ? allHistory.slice(0, 1)

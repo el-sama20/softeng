@@ -586,6 +586,11 @@ body.auth-mode .app-container {
     white-space: nowrap;
 }
 
+.payroll-current-export,
+.payroll-history-export {
+    margin-left: 0;
+}
+
 .payroll-export-btn .dropdown-toggle {
     width: 100%;
 }
@@ -605,7 +610,7 @@ body.auth-mode .app-container {
 .payroll-period-panel {
     margin-top: 1rem;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
     align-items: center;
     gap: 1rem;
     background:
@@ -747,6 +752,10 @@ body.auth-mode .app-container {
 
 .payroll-history-period-filter .filter-select {
     min-width: 220px;
+}
+
+.payroll-history-export {
+    align-self: end;
 }
 
 .payroll-history-toggle {
@@ -2053,6 +2062,7 @@ body.modal-open {
     .payroll-overview-row,
     .payroll-grand-card,
     .payroll-export-btn,
+    .payroll-export-btn .dropdown-toggle,
     .payroll-period-panel,
     .payroll-period-panel .btn {
         width: 100%;

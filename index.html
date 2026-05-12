@@ -342,7 +342,19 @@
                             <p id="payroll-grand-total">PHP 0.00</p>
                         </div>
                     </div>
-                    <div class="dropdown payroll-export-btn">
+                </div>
+                <div class="payroll-period-panel">
+                    <div class="payroll-period-main">
+                        <span class="panel-eyebrow">Current Weekly Payroll Period</span>
+                        <h2 id="payroll-period-range">Current payroll week</h2>
+                        <p id="payroll-period-note">Pending reimbursement.</p>
+                    </div>
+                    <div class="payroll-period-metrics">
+                        <span id="payroll-period-status" class="status-chip status-pending">Pending</span>
+                        <strong id="payroll-period-total">PHP 0.00</strong>
+                        <small id="payroll-period-log-count">0 work logs</small>
+                    </div>
+                    <div class="dropdown payroll-export-btn payroll-current-export">
                         <button type="button" id="payroll-export-toggle" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fa-solid fa-file-export"></i> <span id="payroll-export-label">Export Week</span>
                         </button>
@@ -358,18 +370,6 @@
                                 </button>
                             </li>
                         </ul>
-                    </div>
-                </div>
-                <div class="payroll-period-panel">
-                    <div class="payroll-period-main">
-                        <span class="panel-eyebrow">Current Weekly Payroll Period</span>
-                        <h2 id="payroll-period-range">Current payroll week</h2>
-                        <p id="payroll-period-note">Pending reimbursement.</p>
-                    </div>
-                    <div class="payroll-period-metrics">
-                        <span id="payroll-period-status" class="status-chip status-pending">Pending</span>
-                        <strong id="payroll-period-total">PHP 0.00</strong>
-                        <small id="payroll-period-log-count">0 work logs</small>
                     </div>
                     <button type="button" id="payroll-reimburse-btn" class="btn btn-success-soft" onclick="app.markCurrentPayrollReimbursed()">
                         <i class="fa-solid fa-circle-check"></i> Mark as Reimbursed
@@ -405,6 +405,23 @@
                             <select id="payroll-history-period-filter" class="filter-select" onchange="app.renderPayrollHistory()" aria-label="Select payroll history period">
                                 <option value="latest">Last week</option>
                             </select>
+                        </div>
+                        <div class="dropdown payroll-export-btn payroll-history-export" onclick="event.stopPropagation()">
+                            <button type="button" id="payroll-history-export-toggle" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fa-solid fa-file-export"></i> <span id="payroll-history-export-label">Export Selected</span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end payroll-export-menu">
+                                <li>
+                                    <button type="button" class="dropdown-item" onclick="app.exportPayrollHistoryPDF()">
+                                        <i class="fa-solid fa-file-pdf"></i> PDF
+                                    </button>
+                                </li>
+                                <li>
+                                    <button type="button" class="dropdown-item" onclick="app.exportPayrollHistoryCSV()">
+                                        <i class="fa-solid fa-file-csv"></i> CSV
+                                    </button>
+                                </li>
+                            </ul>
                         </div>
                         <span class="payroll-history-toggle" aria-hidden="true">
                             <i class="fa-solid fa-chevron-down"></i>
