@@ -43,6 +43,16 @@ const STORAGE_KEYS = {
     auditLogs: 'payflow_audit_logs'
 };
 
+const SUPABASE_CONFIG = {
+    url: 'https://rouwjuouttuyeupymaon.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJvdXdqdW91dHR1eWV1cHltYW9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxMTg4NzMsImV4cCI6MjA4NzY5NDg3M30.6i6Y8nE9ysQe5CHq4CKv7lcyH9GROp2lwLDthZ9nWzA',
+    stateTable: 'app_state',
+    stateId: 'efetebe-payroll'
+};
+
+let supabaseClient = null;
+let supabaseSyncTimer = null;
+
 const SETTINGS_FIELD_CONFIG = {
     'weekly-payroll': {
         inputId: 'settings-weekly-payroll',
@@ -140,10 +150,76 @@ const formatDisplayDate = (dateStr) => shortDateFormatter.format(parseDateInputV
 const formatWeekdayDate = (d) => weekdayFormatter.format(d);
 const formatDateTime = (dateStr) => dateStr ? dateTimeFormatter.format(new Date(dateStr)) : 'Not yet saved';
 
+const isSupabaseConfigured = () =>
+    Boolean(SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey && typeof window !== 'undefined' && window.supabase);
+
+const getSupabaseClient = () => {
+    if (!isSupabaseConfigured()) return null;
+    if (!supabaseClient) {
+        supabaseClient = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+    }
+    return supabaseClient;
+};
+
+const getLocalDataSnapshot = () => ({
+    employees: JSON.parse(localStorage.getItem(STORAGE_KEYS.employees) || '[]'),
+    payrollPeriods: JSON.parse(localStorage.getItem(STORAGE_KEYS.payrollPeriods) || '[]'),
+    settings: JSON.parse(localStorage.getItem(STORAGE_KEYS.settings) || '{}'),
+    admins: JSON.parse(localStorage.getItem(STORAGE_KEYS.admins) || '[]'),
+    auditLogs: JSON.parse(localStorage.getItem(STORAGE_KEYS.auditLogs) || '[]')
+});
+
+const getStateSnapshot = () => ({
+    app: 'efetebe-payroll',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    employees: state.employees,
+    payrollPeriods: state.payrollPeriods,
+    settings: state.settings,
+    admins: state.admins,
+    auditLogs: state.auditLogs
+});
+
+const loadSupabaseSnapshot = async () => {
+    const client = getSupabaseClient();
+    if (!client) return null;
+
+    const { data, error } = await client
+        .from(SUPABASE_CONFIG.stateTable)
+        .select('payload')
+        .eq('id', SUPABASE_CONFIG.stateId)
+        .maybeSingle();
+
+    if (error) throw error;
+    return data && data.payload ? data.payload : null;
+};
+
+const syncStateToSupabase = () => {
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    clearTimeout(supabaseSyncTimer);
+    supabaseSyncTimer = setTimeout(async () => {
+        const payload = getStateSnapshot();
+        const { error } = await client
+            .from(SUPABASE_CONFIG.stateTable)
+            .upsert({
+                id: SUPABASE_CONFIG.stateId,
+                payload,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'id' });
+
+        if (error) {
+            console.error('Supabase sync failed:', error);
+        }
+    }, 400);
+};
+
 const saveState = () => {
     localStorage.setItem(STORAGE_KEYS.employees, JSON.stringify(state.employees));
     localStorage.setItem(STORAGE_KEYS.payrollPeriods, JSON.stringify(state.payrollPeriods));
     localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(state.settings));
+    syncStateToSupabase();
     app.render();
 };
 
@@ -158,10 +234,12 @@ const saveSessionState = () => {
 
 const saveAdminState = () => {
     localStorage.setItem(STORAGE_KEYS.admins, JSON.stringify(state.admins));
+    syncStateToSupabase();
 };
 
 const saveAuditState = () => {
     localStorage.setItem(STORAGE_KEYS.auditLogs, JSON.stringify(state.auditLogs));
+    syncStateToSupabase();
 };
 
 const formatCurrency = (amount) => currencyFormatter.format(Number(amount) || 0);
@@ -350,11 +428,28 @@ const app = {
     },
 
     loadInitialData: async () => {
-        const local = JSON.parse(localStorage.getItem(STORAGE_KEYS.employees) || '[]');
-        const localPayrollPeriods = JSON.parse(localStorage.getItem(STORAGE_KEYS.payrollPeriods) || '[]');
-        const localSettings = JSON.parse(localStorage.getItem(STORAGE_KEYS.settings) || '{}');
-        const localAdmins = JSON.parse(localStorage.getItem(STORAGE_KEYS.admins) || '[]');
-        const localAuditLogs = JSON.parse(localStorage.getItem(STORAGE_KEYS.auditLogs) || '[]');
+        let storedData = getLocalDataSnapshot();
+        if (isSupabaseConfigured()) {
+            try {
+                const remoteData = await loadSupabaseSnapshot();
+                if (remoteData && typeof remoteData === 'object') {
+                    storedData = { ...storedData, ...remoteData };
+                    localStorage.setItem(STORAGE_KEYS.employees, JSON.stringify(storedData.employees || []));
+                    localStorage.setItem(STORAGE_KEYS.payrollPeriods, JSON.stringify(storedData.payrollPeriods || []));
+                    localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(storedData.settings || {}));
+                    localStorage.setItem(STORAGE_KEYS.admins, JSON.stringify(storedData.admins || []));
+                    localStorage.setItem(STORAGE_KEYS.auditLogs, JSON.stringify(storedData.auditLogs || []));
+                }
+            } catch (error) {
+                console.error('Supabase load failed. Falling back to browser storage:', error);
+            }
+        }
+
+        const local = storedData.employees || [];
+        const localPayrollPeriods = storedData.payrollPeriods || [];
+        const localSettings = storedData.settings || {};
+        const localAdmins = storedData.admins || [];
+        const localAuditLogs = storedData.auditLogs || [];
         const storedLoginState = localStorage.getItem(STORAGE_KEYS.isLoggedIn);
         const storedCurrentAdminId = localStorage.getItem(STORAGE_KEYS.currentAdminId);
         let cleanedInvalidReimbursements = false;
@@ -472,6 +567,7 @@ const app = {
         }
 
         saveSessionState();
+        syncStateToSupabase();
     },
 
     getCurrentAdmin: () => {
